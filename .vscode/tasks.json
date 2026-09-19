@@ -1,0 +1,46 @@
+{
+  "version": "2.0.0",
+  "inputs": [
+    {
+      "id": "openCursorBrowser",
+      "type": "command",
+      "command": "workbench.action.openBrowserEditor",
+      "args": {
+        "url": "http://127.0.0.1:5173/",
+        "preserveFocus": false
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "label": "bun-install",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/bun-install.sh",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "dev-prelaunch",
+      "dependsOrder": "sequence",
+      "dependsOn": ["bun-install"],
+      "problemMatcher": []
+    },
+    {
+      "label": "open-cursor-browser",
+      "type": "process",
+      "command": "/bin/true",
+      "args": ["${input:openCursorBrowser}"],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "never",
+        "echo": false,
+        "focus": false,
+        "panel": "dedicated",
+        "showReuseMessage": false,
+        "close": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+---
+description: Package manager and local dev commands for possessed-pen
+globs:
+alwaysApply: true
+---
+
+# Package manager: Bun
+
+Use **Bun** for installs and scripts — not npm or yarn.
+
+- Install: `bun install` (lockfile: `bun.lock`)
+- Dev: `bun run dev` (or VS Code **Dev (Vite + Worker)** — runs `scripts/vite-dev.sh`)
+- Build: `bun run build`
+- Preview: `bun run preview`
+
+`packageManager` in `package.json` pins the Bun version. `bunfig.toml` sets the npm registry for reproducible CI.
+
+Wrangler/Vite still run on Node-compatible APIs; Bun is the package manager and script runner only.

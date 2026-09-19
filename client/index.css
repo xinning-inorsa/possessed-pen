@@ -1,0 +1,96 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+@import url('tldraw/tldraw.css');
+
+/* ------------------------------------------------------------------ */
+/* Design tokens — Cursor/xAI hackathon aesthetic                       */
+/* Near-black canvas, warm ink text, Cursor orange accent, glass chrome */
+/* ------------------------------------------------------------------ */
+
+:root {
+	--pp-canvas: #1a1c22;
+	--pp-canvas-grid: #252830;
+	--pp-chrome-bg: oklch(0.22 0.012 260 / 0.82);
+	--pp-chrome-hover: oklch(0.28 0.014 260 / 0.55);
+	--pp-border: oklch(1 0 0 / 0.1);
+	--pp-border-strong: oklch(1 0 0 / 0.18);
+	--pp-text: oklch(0.96 0.008 80);
+	--pp-text-muted: oklch(0.78 0.01 80);
+	--pp-text-subtle: oklch(0.58 0.01 80);
+	--pp-accent: #f54e00;
+	--pp-accent-foreground: #fff;
+	--pp-success: #5ec269;
+	--pp-error: #e85d6a;
+	--pp-shadow-chrome: 0 8px 32px oklch(0 0 0 / 0.35);
+	--pp-shadow-bar: 0 12px 48px oklch(0 0 0 / 0.45), 0 0 0 1px oklch(1 0 0 / 0.04);
+	--pp-radius-sm: 6px;
+	--pp-radius-panel: 12px;
+	--pp-radius-pill: 999px;
+	--pp-font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+	--pp-font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+	/* Bridge to tldraw dark theme */
+	--tl-color-background: var(--pp-canvas);
+	--tl-color-panel: var(--pp-chrome-bg);
+	--tl-color-text: var(--pp-text);
+	--tl-color-text-1: var(--pp-text);
+	--tl-color-text-2: var(--pp-text-muted);
+	--tl-color-text-3: var(--pp-text-subtle);
+	--tl-color-low: var(--pp-border);
+	--tl-color-primary: var(--pp-accent);
+	--tl-color-selected: var(--pp-accent);
+}
+
+* {
+	box-sizing: border-box;
+	overscroll-behavior: none;
+}
+
+html,
+body,
+#root {
+	margin: 0;
+	padding: 0;
+	width: 100%;
+	height: 100%;
+	overflow: hidden;
+	background: var(--pp-canvas);
+	color: var(--pp-text);
+	font-family: var(--pp-font-sans);
+	font-weight: 400;
+	-webkit-font-smoothing: antialiased;
+}
+
+/* ------------------------------------------------------------------ */
+/* Full-screen canvas layout — no chat grid                           */
+/* ------------------------------------------------------------------ */
+
+.possessed-pen-layout {
+	position: fixed;
+	inset: 0;
+	display: flex;
+	flex-direction: column;
+	background: var(--pp-canvas);
+}
+
+.possessed-pen-layout .tldraw-canvas,
+.possessed-pen-layout .tl-container {
+	width: 100%;
+	height: 100%;
+	flex: 1;
+	min-height: 0;
+}
+
+.tldraw-agent-container {
+	width: 100%;
+	height: 100%;
+}
+
+/* Subtle vignette so chrome reads on projector */
+.possessed-pen-layout::after {
+	content: '';
+	position: fixed;
+	inset: 0;
+	pointer-events: none;
+	z-index: 1;
+	background: radial-gradient(ellipse 90% 80% at 50% 45%, transparent 55%, oklch(0 0 0 / 0.25) 100%);
+}

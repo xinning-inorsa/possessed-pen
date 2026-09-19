@@ -1,0 +1,12 @@
+{
+  "remote.autoForwardPorts": true,
+  "remote.portsAttributes": {
+    "5173": {
+      "label": "Vite (possessed-pen)",
+      "onAutoForward": "silent"
+    }
+  },
+  "files.exclude": {
+    "**/dist": true
+  }
+}

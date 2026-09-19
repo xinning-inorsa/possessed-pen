@@ -1,0 +1,51 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Dev (Vite + Worker)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "${workspaceFolder}/scripts/vite-dev.sh",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "preLaunchTask": "dev-prelaunch",
+      "serverReadyAction": {
+        "pattern": "Local:\\s+(https?://\\S+?)/?(?:\\s|$)",
+        "action": "startDebugging",
+        "name": "Open Cursor Browser",
+        "killOnServerStop": true
+      },
+      "presentation": {
+        "group": "1_product",
+        "order": 0
+      }
+    },
+    {
+      "name": "Open Cursor Browser",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["-e", "process.exit(0)"],
+      "console": "internalConsole",
+      "internalConsoleOptions": "neverOpen",
+      "preLaunchTask": "open-cursor-browser",
+      "presentation": {
+        "hidden": true,
+        "group": "z_internal",
+        "order": 99
+      }
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Dev — install + start",
+      "configurations": ["Dev (Vite + Worker)"],
+      "preLaunchTask": "dev-prelaunch",
+      "stopAll": true,
+      "presentation": {
+        "group": "1_product",
+        "order": 0
+      }
+    }
+  ]
+}

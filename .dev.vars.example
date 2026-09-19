@@ -1,0 +1,18 @@
+# Amazon Bedrock (preferred on Cloudflare Workers: bearer token)
+AWS_BEARER_TOKEN_BEDROCK=
+AWS_REGION=us-east-1
+# Claude Sonnet 4.5 (native Anthropic API on Bedrock). Fallback: us.anthropic.claude-3-5-sonnet-20241022-v2:0
+BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-5-20250929-v1:0
+
+# IAM — required for voice call STT (/api/transcribe, Amazon Transcribe streaming)
+# Bedrock bearer token above does NOT work for Transcribe; use IAM keys with transcribe:StartStreamTranscription
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_SESSION_TOKEN=
+
+# Legacy kit provider (optional; not used for voice STT)
+OPENAI_API_KEY=
+
+# Legacy kit providers (optional)
+ANTHROPIC_API_KEY=
+GOOGLE_API_KEY=

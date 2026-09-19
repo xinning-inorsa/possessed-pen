@@ -1,0 +1,33 @@
+---
+description: possessed-pen hackathon stack and product boundaries
+alwaysApply: true
+---
+
+# possessed-pen
+
+An agent that only draws — steer with lasso and a command bar, not chat.
+
+## Stack
+
+- **Runtime:** Bun (package manager + dev scripts). Do not use npm/yarn unless documenting fallback.
+- **Node:** ≥ 22 (see `.nvmrc`). Vite 8 + Rolldown require Node 22+.
+- **Canvas:** tldraw agent kit, full-screen infinite canvas.
+- **LLM:** Amazon Bedrock (Claude) via `@ai-sdk/amazon-bedrock`. Credentials in `.dev.vars` (never commit).
+- **Layout:** Mermaid only — `@tldraw/mermaid` `createMermaidDiagram`. LLM emits topology; layout is deterministic. Never ask the model for raw (x,y) coordinates.
+
+## Product (do not regress)
+
+- No chat transcript UI. Command bar + Demo + layer timeline only.
+- Demo button uses **hardcoded Mermaid** — works offline, zero typing for judges.
+- Selection → redo: client-owned `replace_in_bounds` — delete only selected `shapeIds`, regenerate inside same AABB.
+- Agent working mode: **Pen and screenshot disabled**. `apply_mermaid` or `/api/generate-mermaid` for ink.
+
+## Do NOT build
+
+Chat UI, freehand art demos, multiplayer, vision-first loops, Fabric/raw canvas, dagre/ELK unless Mermaid fails.
+
+## Kill criteria
+
+- Bedrock down → Demo + hardcoded Mermaid still works.
+- Mermaid fails → 3 JSON template packs.
+- Selection redo flaky → ship layer-level redo only.

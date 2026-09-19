@@ -1,0 +1,5 @@
+flowchart TD
+  User([User]) --> Gateway[API Gateway]
+  Gateway --> Auth{Auth Service}
+  Auth -->|valid token| App[Application]
+  Auth -->|invalid| Error[Error Response]

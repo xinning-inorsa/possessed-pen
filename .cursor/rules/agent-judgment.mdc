@@ -1,0 +1,22 @@
+---
+description: Clarify constraints before workarounds; minimal scope; no speculative code
+alwaysApply: true
+---
+
+# Agent judgment
+
+## Clarify before workarounds
+
+If a request hits a platform, API, or tooling constraint the user may not know about, **stop and ask** before implementing. Do not silently add dual paths or compatibility shims.
+
+## Minimal scope
+
+Change only what the task needs. Match existing kit patterns (action utils, prompt parts, worker routes). Do not add features, configs, or abstractions for unrequested cases.
+
+## Clean up dead code
+
+When replacing a path (e.g. chat → command bar), delete unused call sites in the same change. Do not leave parallel stacks “just in case.”
+
+## Shop before house
+
+For new capabilities, prefer maintained packages (`@tldraw/mermaid`, Vercel AI SDK Bedrock provider) over custom layout or provider plumbing.
