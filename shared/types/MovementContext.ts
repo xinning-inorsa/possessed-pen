@@ -4,6 +4,8 @@ export type MovementDwellRegion = {
 	durationMs: number
 	shapeIds: string[]
 	labels?: string[]
+	/** Canvas point of the dwell — set even when shapeIds is empty. */
+	pagePoint?: { x: number; y: number }
 }
 
 export type MovementCircledRegion = {
@@ -14,8 +16,18 @@ export type MovementCircledRegion = {
 	labels?: string[]
 }
 
+/** Pointer click (mouseup) during or shortly after the utterance. */
+export type MovementClickRegion = {
+	tMs: number
+	shapeIds: string[]
+	labels?: string[]
+	/** Canvas point of the click — set even when shapeIds is empty. */
+	pagePoint?: { x: number; y: number }
+}
+
 export type MovementContext = {
 	hoveredShapeIds: string[]
 	dwellRegions: MovementDwellRegion[]
 	circledRegions: MovementCircledRegion[]
+	clickRegions: MovementClickRegion[]
 }

@@ -771,6 +771,7 @@ export function convertPartialFocusedShapeToTldrawShape(
 			maxWidth: partial.maxWidth ?? null,
 		} as FocusedTextShape
 		const result = convertTextShapeToTldrawShape(editor, fullShape, { defaultShape })
+		if (!result?.shape) return { shape: null, bindings: null, position: null }
 		return { shape: result.shape, bindings: null, position: { x: partial.x, y: partial.y } }
 	}
 
@@ -795,6 +796,7 @@ export function convertPartialFocusedShapeToTldrawShape(
 			textAlign: partial.textAlign || 'middle',
 		} as FocusedGeoShape
 		const result = convertGeoShapeToTldrawShape(editor, fullShape, { defaultShape })
+		if (!result?.shape) return { shape: null, bindings: null, position: null }
 		return { shape: result.shape, bindings: null, position: { x: partial.x, y: partial.y } }
 	}
 
@@ -807,11 +809,15 @@ export function convertPartialFocusedShapeToTldrawShape(
 	const result = convertFocusedShapeToTldrawShape(editor, focusedShape as FocusedShape, {
 		defaultShape,
 	})
+	if (!result?.shape) {
+		return { shape: null, bindings: null, position: null }
+	}
 	const position =
 		'x' in focusedShape && 'y' in focusedShape
 			? { x: focusedShape.x as number, y: focusedShape.y as number }
 			: 'x1' in focusedShape && 'y1' in focusedShape
 				? { x: focusedShape.x1 as number, y: focusedShape.y1 as number }
 				: null
+	if (!result?.shape) return { shape: null, bindings: null, position: null }
 	return { shape: result.shape, bindings: result.bindings ?? null, position }
 }

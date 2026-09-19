@@ -1,9 +1,11 @@
-import { RecordsDiff, structuredClone, TLRecord } from 'tldraw'
+import { RecordsDiff, structuredClone, TLRecord, TLShapeId } from 'tldraw'
+import { animateDrawOn } from '../../lib/animateDrawOn'
 import { AgentAction } from '../../../shared/types/AgentAction'
 import { ChatHistoryItem } from '../../../shared/types/ChatHistoryItem'
 import { Streaming } from '../../../shared/types/Streaming'
 import { AgentActionUtil, getAgentActionUtilsRecordForMode } from '../../actions/AgentActionUtil'
 import { AgentHelpers } from '../../AgentHelpers'
+import { tagDiffWithEditLayer } from '../../lib/tagDiffWithEditLayer'
 import type { TldrawAgent } from '../TldrawAgent'
 import { BaseAgentManager } from './BaseAgentManager'
 
@@ -89,7 +91,8 @@ export class AgentActionManager extends BaseAgentManager {
 	 */
 	act(
 		action: Streaming<AgentAction>,
-		helpers: AgentHelpers = new AgentHelpers(this.agent)
+		helpers: AgentHelpers = new AgentHelpers(this.agent),
+		options?: { reportError?: boolean }
 	): {
 		diff: RecordsDiff<TLRecord>
 		promise: Promise<void> | null
@@ -105,12 +108,24 @@ export class AgentActionManager extends BaseAgentManager {
 				promise = util.applyAction(structuredClone(action), helpers) ?? null
 			})
 		} catch (error) {
-			// always toast the error
-			this.agent.onError(error)
+			if (options?.reportError !== false) {
+				this.agent.onError(error)
+			}
 			promise = null
-			throw error // you may not want to throw in productions
+			throw error
 		} finally {
 			this.agent.setIsActingOnEditor(false)
+		}
+
+		this.agent.lints.trackShapesFromDiff(diff)
+		tagDiffWithEditLayer(editor, diff)
+
+		// Hand-drawn reveal for freshly created shapes.
+		const createdIds = Object.entries(diff.added)
+			.filter(([, record]) => record.typeName === 'shape')
+			.map(([id]) => id as TLShapeId)
+		if (createdIds.length > 0) {
+			animateDrawOn(editor, createdIds)
 		}
 
 		// Add the action to chat history

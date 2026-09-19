@@ -1,16 +1,28 @@
-import { Editor, RecordsDiff, reverseRecordsDiff, structuredClone, TLRecord } from 'tldraw'
+import { Editor, structuredClone } from 'tldraw'
 import { convertTldrawShapeToFocusedShape } from '../../shared/format/convertTldrawShapeToFocusedShape'
 import { AgentModelName } from '../../shared/models'
-import { AgentAction } from '../../shared/types/AgentAction'
+import type {
+	AgentStreamEvent,
+	AgentStreamRequest,
+} from '../../shared/types/AgentStreamProtocol'
 import { AgentInput } from '../../shared/types/AgentInput'
 import { AgentPrompt, BaseAgentPrompt } from '../../shared/types/AgentPrompt'
 import { AgentRequest } from '../../shared/types/AgentRequest'
 import { ChatHistoryItem, ChatHistoryPromptItem } from '../../shared/types/ChatHistoryItem'
 import { ContextItem } from '../../shared/types/ContextItem'
 import { PromptPart } from '../../shared/types/PromptPart'
-import { Streaming } from '../../shared/types/Streaming'
 import { TodoItem } from '../../shared/types/TodoItem'
 import { AgentHelpers } from '../AgentHelpers'
+import { buildCanvasSnapshot } from '../lib/buildCanvasSnapshot'
+import { executeCanvasTool } from '../lib/executeCanvasTool'
+import {
+	AGENT_STEP_DELAY_MS,
+	describeToolResult,
+	describeToolStep,
+	isMutationTool,
+	sleep,
+} from '../lib/agentEditPacing'
+import { addThinkingStep } from '../lib/thinkingLog'
 import { getModeNode } from '../modes/AgentModeChart'
 import { AgentModeType } from '../modes/AgentModeDefinitions'
 import { getPromptPartUtilsRecord, PromptPartUtil } from '../parts/PromptPartUtil'
@@ -68,6 +80,9 @@ export class TldrawAgent {
 
 	/** A callback for when an error occurs. */
 	onError: (e: any) => void
+
+	/** Stats from the most recent Deep Agent edit loop. */
+	lastEditLoopStats = { mutationsApplied: 0, mutationFailures: 0 }
 
 	// ==================== Managers ====================
 
@@ -576,6 +591,8 @@ export class TldrawAgent {
 		let cancelled = false
 		const controller = new AbortController()
 		const signal = controller.signal
+		// Sync chat origin with this request's viewport before offset helpers are built.
+		this.chatOrigin.setOrigin({ x: request.bounds.x, y: request.bounds.y })
 		const helpers = new AgentHelpers(this)
 
 		const modeDefinition = this.mode.getCurrentModeDefinition()
@@ -586,74 +603,9 @@ export class TldrawAgent {
 			)
 		}
 
-		const availableActions = modeDefinition.actions
-
 		const requestPromise = (async () => {
-			const prompt = await this.preparePrompt(request, helpers)
-			let incompleteDiff: RecordsDiff<TLRecord> | null = null
-			const actionPromises: Promise<void>[] = []
 			try {
-				for await (const action of this.streamAgentActions({ prompt, signal })) {
-					if (cancelled) break
-
-					// Set acting flag BEFORE editor.run so user action tracker ignores all changes
-					// including diff reverts that happen before act() is called
-					this.setIsActingOnEditor(true)
-					try {
-						editor.run(
-							() => {
-								const actionUtilType = this.actions.getAgentActionUtilType(action._type)
-								const actionUtil = this.actions.getAgentActionUtil(action._type)
-
-								// If the action is not in the mode's available actions, skip it
-								if (!availableActions.includes(actionUtilType)) {
-									return
-								}
-
-								// If there was a diff from an incomplete action, revert it so that we can reapply the action
-								// This must happen BEFORE sanitize so we're working with clean state
-								if (incompleteDiff) {
-									const inversePrevDiff = reverseRecordsDiff(incompleteDiff)
-									editor.store.applyDiff(inversePrevDiff)
-									// Track the inverse diff to update created shapes tracking
-									this.lints.trackShapesFromDiff(inversePrevDiff)
-									incompleteDiff = null
-								}
-
-								// Sanitize the agent's action
-								const transformedAction = actionUtil.sanitizeAction(action, helpers)
-								if (!transformedAction) {
-									return
-								}
-
-								// Apply the action to the app and editor
-								const { diff, promise } = this.actions.act(transformedAction, helpers)
-
-								if (promise) {
-									actionPromises.push(promise)
-								}
-
-								// Track shapes from diff for both complete and incomplete actions
-								this.lints.trackShapesFromDiff(diff)
-
-								// If the action is incomplete, save the diff so that we can revert it in the future
-								if (transformedAction.complete) {
-									// Log completed action if debug logging is enabled
-									this.debug.logCompletedAction(transformedAction)
-								} else {
-									incompleteDiff = diff
-								}
-							},
-							{
-								ignoreShapeLock: true,
-								history: 'ignore',
-							}
-						)
-					} finally {
-						this.setIsActingOnEditor(false)
-					}
-				}
-				await Promise.all(actionPromises)
+				await this.runDeepAgentLoop({ request, helpers, signal, cancelled: () => cancelled })
 			} catch (e) {
 				if (e === 'Cancelled by user' || (e instanceof Error && e.name === 'AbortError')) {
 					return
@@ -670,30 +622,110 @@ export class TldrawAgent {
 		return { promise: requestPromise, cancel }
 	}
 
-	/**
-	 * Stream a response from the model.
-	 * Act on the model's events as they come in.
-	 *
-	 * This is a helper function that is used internally by the agent.
-	 */
-	private async *streamAgentActions({
-		prompt,
+	getLastEditLoopStats() {
+		return this.lastEditLoopStats
+	}
+
+	private async runDeepAgentLoop({
+		request,
+		helpers,
 		signal,
+		cancelled,
 	}: {
-		prompt: BaseAgentPrompt
+		request: AgentRequest
+		helpers: AgentHelpers
 		signal: AbortSignal
-	}): AsyncGenerator<Streaming<AgentAction>> {
+		cancelled: () => boolean
+	}) {
+		this.lastEditLoopStats = { mutationsApplied: 0, mutationFailures: 0 }
+
+		const threadId = crypto.randomUUID()
+		const canvas = await buildCanvasSnapshot(this.editor, request, helpers)
+		const message = request.agentMessages.join('\n').trim()
+
+		let body: AgentStreamRequest = {
+			type: 'start',
+			threadId,
+			canvas,
+			message,
+		}
+
+		const narrate = (message: string) => {
+			request.onEditStep?.(message)
+		}
+
+		while (!cancelled()) {
+			const event = await this.postStreamEvent(body, signal)
+			if (event.type === 'error') {
+				throw new Error(event.message)
+			}
+			if (event.type === 'done') {
+				return
+			}
+			if (event.type === 'interrupt') {
+				if (event.tools.length === 0) {
+					throw new Error('Interrupt event had no canvas tools')
+				}
+
+				const results = []
+				for (const call of event.tools) {
+					const stepMessage = describeToolStep(call.tool, call.args)
+					narrate(stepMessage)
+
+					if (request.thinkingAttemptId) {
+						addThinkingStep(request.thinkingAttemptId, {
+							kind: 'ink',
+							title: stepMessage,
+							body: call.args,
+						})
+					}
+
+					const result = await executeCanvasTool(
+						this,
+						call.tool,
+						call.args,
+						helpers,
+						request.bounds
+					)
+					results.push(result)
+
+					const resultMessage = describeToolResult(call.tool, result.ok)
+					narrate(resultMessage)
+
+					if (isMutationTool(call.tool)) {
+						if (result.ok) this.lastEditLoopStats.mutationsApplied += 1
+						else this.lastEditLoopStats.mutationFailures += 1
+					}
+
+					if (request.thinkingAttemptId) {
+						addThinkingStep(request.thinkingAttemptId, {
+							kind: result.ok ? 'ink' : 'error',
+							title: resultMessage,
+							error: result.error,
+						})
+					}
+				}
+
+				await sleep(AGENT_STEP_DELAY_MS, signal)
+
+				body = { type: 'resume', threadId, resume: results }
+			}
+		}
+	}
+
+	private async postStreamEvent(
+		body: AgentStreamRequest,
+		signal: AbortSignal
+	): Promise<AgentStreamEvent> {
 		const res = await fetch('/stream', {
 			method: 'POST',
-			body: JSON.stringify(prompt),
-			headers: {
-				'Content-Type': 'application/json',
-			},
+			body: JSON.stringify(body),
+			headers: { 'Content-Type': 'application/json' },
 			signal,
 		})
 
 		if (!res.body) {
-			throw Error('No body in response')
+			throw new Error('No body in response')
 		}
 
 		const reader = res.body.getReader()
@@ -706,30 +738,23 @@ export class TldrawAgent {
 				if (done) break
 
 				buffer += decoder.decode(value, { stream: true })
-				const actions = buffer.split('\n\n')
-				buffer = actions.pop() || ''
+				const chunks = buffer.split('\n\n')
+				buffer = chunks.pop() || ''
 
-				for (const action of actions) {
-					const match = action.match(/^data: (.+)$/m)
-					if (match) {
-						try {
-							const data = JSON.parse(match[1])
-
-							// If the response contains an error, throw it
-							if ('error' in data) {
-								throw new Error(data.error)
-							}
-
-							const agentAction: Streaming<AgentAction> = data
-							yield agentAction
-						} catch (err: any) {
-							throw new Error(err.message)
-						}
+				for (const chunk of chunks) {
+					const match = chunk.match(/^data: (.+)$/m)
+					if (!match) continue
+					const data = JSON.parse(match[1]) as AgentStreamEvent & { error?: string }
+					if ('error' in data && typeof data.error === 'string') {
+						throw new Error(data.error)
 					}
+					return data
 				}
 			}
 		} finally {
 			reader.releaseLock()
 		}
+
+		throw new Error('Stream ended without an event')
 	}
 }

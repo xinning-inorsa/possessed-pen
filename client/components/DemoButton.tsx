@@ -1,8 +1,8 @@
 import { useCallback, useState } from 'react'
 import { useAgent } from '../agent/TldrawAgentAppProvider'
-import AUTH_FLOW from '../seed/authFlow.mmd?raw'
+import { AUTH_FLOW_NATIVE } from '../demo/authFlowNative'
+import { applyNativeDiagramWithLayer } from '../demo/applyNativeDiagramWithLayer'
 import { useLayers } from '../layers/LayerContext'
-import { applyMermaidWithLayer } from '../mermaid/applyMermaidWithLayer'
 
 function newLayerId() {
 	return `layer-${crypto.randomUUID()}`
@@ -26,7 +26,7 @@ export function DemoButton({ disabled, onStatus, isEmptyCanvas }: DemoButtonProp
 		onStatus?.(null)
 		try {
 			const layer = addLayer({ id: newLayerId(), name: 'Auth flow', shapeIds: [] })
-			const shapeIds = await applyMermaidWithLayer(editor, AUTH_FLOW, layer)
+			const shapeIds = await applyNativeDiagramWithLayer(editor, AUTH_FLOW_NATIVE, layer)
 			updateLayerShapeIds(layer.id, shapeIds)
 			editor.zoomToFit({ animation: { duration: 320 } })
 			onStatus?.('Demo loaded')

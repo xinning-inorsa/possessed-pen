@@ -15,6 +15,7 @@ import { CustomHelperButtons } from './components/CustomHelperButtons'
 import { PossessedPenChrome } from './components/PossessedPenChrome'
 import { LayerProvider } from './layers/LayerContext'
 import { AgentHighlightOverlayUtil } from './overlays/AgentHighlightOverlayUtil'
+import { ensureSteeringTool, stripFreehandTools } from './lib/canvasSteeringTools'
 import { TargetAreaTool } from './tools/TargetAreaTool'
 import { TargetShapeTool } from './tools/TargetShapeTool'
 import './components/possessed-pen.css'
@@ -32,7 +33,7 @@ const overlayUtils = [AgentHighlightOverlayUtil]
 const overrides: TLUiOverrides = {
 	tools: (editor, tools) => {
 		return {
-			...tools,
+			...stripFreehandTools(tools),
 			'target-area': {
 				id: 'target-area',
 				label: 'Pick Area',
@@ -98,6 +99,7 @@ function App() {
 								colorScheme: 'dark',
 								inputMode: 'mouse',
 							})
+							ensureSteeringTool(editor)
 						}}
 					>
 						<TldrawAgentAppProvider onMount={setApp} onUnmount={handleUnmount} />

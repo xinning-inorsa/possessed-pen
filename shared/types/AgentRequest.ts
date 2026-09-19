@@ -1,5 +1,8 @@
 import { BoxModel, JsonValue } from 'tldraw'
 import { ContextItem } from './ContextItem'
+import type { MovementContext } from './MovementContext'
+import type { SpatialRef } from './SpatialRef'
+import type { TranscriptWord } from './TranscriptWord'
 
 /**
  * A request that we send to the agent.
@@ -44,6 +47,21 @@ export interface AgentRequest {
 	 * This is a snapshot of the context at request creation time.
 	 */
 	contextItems: ContextItem[]
+
+	/** Voice deixis refs (simple shape IDs) for Deep Agent canvas seeding. */
+	spatialRefs?: SpatialRef[]
+
+	/** Pointer movement summary for Deep Agent canvas seeding. */
+	movementContext?: MovementContext
+
+	/** Word-level transcript timings for the word↔gesture timeline. */
+	transcriptWords?: TranscriptWord[]
+
+	/** Thinking panel attempt to append tool-step logs during Deep Agent edits. */
+	thinkingAttemptId?: string
+
+	/** Live narration between paced edit steps (demo / voice status). */
+	onEditStep?: (message: string) => void
 }
 
 export type AgentRequestSource = AgentRequest['source']

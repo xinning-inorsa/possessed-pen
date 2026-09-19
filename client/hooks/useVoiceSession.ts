@@ -2,6 +2,7 @@ import { Editor } from '@tldraw/editor'
 import { useCallback, useRef, useState, type MutableRefObject } from 'react'
 import type { MovementContext } from '../../shared/types/MovementContext'
 import type { SpatialRef } from '../../shared/types/SpatialRef'
+import type { TranscriptWord } from '../../shared/types/TranscriptWord'
 import {
 	flashResolvedShapes,
 	resolveDeixis,
@@ -22,6 +23,7 @@ import {
 import { transcribeAudio } from '../lib/transcribeAudio'
 import { createVadMonitor } from '../lib/vad'
 import type { CommandStatus } from './usePenCommand'
+import { POINTER_UTTERANCE_GRACE_MS } from '../lib/pointerGestures'
 import { usePointerSampler } from './usePointerSampler'
 
 const LOG_PREFIX = '[pp-voice]'
@@ -35,6 +37,7 @@ type UseVoiceSessionOptions = {
 			quiet?: boolean
 			movementContext?: MovementContext
 			thinkingAttemptId?: string
+			transcriptWords?: TranscriptWord[]
 		}
 	) => Promise<void>
 	isGenerating: boolean
@@ -207,6 +210,14 @@ export function useVoiceSession({
 
 			try {
 				const { transcript, words } = await transcribeAudio(blob)
+
+				// Wait out the pointer grace window so post-speech clicks are captured
+				// when transcription returns faster than the grace period.
+				const graceWaitMs =
+					utteranceEndMs + POINTER_UTTERANCE_GRACE_MS - (performance.now() - callStartMsRef.current)
+				if (graceWaitMs > 0) {
+					await new Promise((resolve) => setTimeout(resolve, graceWaitMs))
+				}
 				console.info(`${LOG_PREFIX} transcribe ok`, {
 					chars: transcript.length,
 					words: words?.length ?? 0,
@@ -218,7 +229,10 @@ export function useVoiceSession({
 					durationMs: Math.round(performance.now() - transcribeStartedAt),
 				})
 
-				const pointerState = snapshotUtterancePointerState(utteranceStartMs, utteranceEndMs)
+				const pointerState = snapshotUtterancePointerState(
+					utteranceStartMs,
+					utteranceEndMs + POINTER_UTTERANCE_GRACE_MS
+				)
 				const durationMs = utteranceEndMs - utteranceStartMs
 				const { refs, resolvedText, movementContext } = resolveDeixis({
 					transcript,
@@ -262,24 +276,17 @@ export function useVoiceSession({
 				onTranscript?.(resolvedText)
 				flashResolvedShapes(editor, refs)
 
-				const snippet =
-					resolvedText.length > 72 ? `${resolvedText.slice(0, 69)}…` : resolvedText
-
 				setCallStatus('Inking…')
 				console.info(`${LOG_PREFIX} submit`, { chars: resolvedText.length, refs: refs.length })
 				await submit(resolvedText, refs.length > 0 ? refs : undefined, {
 					quiet: true,
 					movementContext,
+					transcriptWords: words,
 					thinkingAttemptId: attemptId,
 				})
 				console.info(`${LOG_PREFIX} submit ok`)
 				transcriptSucceededRef.current = true
-
-				if (isOnCallRef.current) {
-					setCallStatus(`On call… · "${snippet}"`)
-				} else {
-					setStatus(`"${snippet}"`, 'success')
-				}
+				setStatus('Updated', 'success')
 			} catch (e) {
 				const message = e instanceof Error ? e.message : 'Transcription failed'
 				console.error(`${LOG_PREFIX} utterance failed`, message, e)
@@ -299,9 +306,6 @@ export function useVoiceSession({
 				setIsTranscribing(false)
 				if (isOnCallRef.current) {
 					setLiveCallState({ isTranscribing: false })
-					if (!isGeneratingRef.current) {
-						setCallStatus('On call…')
-					}
 				}
 			}
 		},
@@ -324,7 +328,7 @@ export function useVoiceSession({
 		if (!blob || blob.size === 0) {
 			console.info(`${LOG_PREFIX} no audio captured for utterance`)
 			if (isOnCallRef.current) {
-				setCallStatus('On call…')
+				setStatus(null)
 			}
 			return
 		}
@@ -450,7 +454,7 @@ export function useVoiceSession({
 
 			isOnCallRef.current = true
 			setIsOnCall(true)
-			setCallStatus('On call…')
+			setStatus(null)
 			console.info(`${LOG_PREFIX} startCall`)
 
 			vadStopRef.current = createVadMonitor(stream, {

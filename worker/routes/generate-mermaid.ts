@@ -48,6 +48,10 @@ function buildMovementContext(context: MovementContext): string {
 			`- Circled region (${Math.round(w)}×${Math.round(h)} at ${Math.round(x)},${Math.round(y)}): ${labels}`
 		)
 	}
+	for (const click of context.clickRegions ?? []) {
+		const labels = click.labels?.length ? click.labels.join(', ') : click.shapeIds.join(', ')
+		lines.push(`- Clicked: ${labels} (ids: ${click.shapeIds.join(', ')})`)
+	}
 	return lines.join('\n')
 }
 
@@ -71,7 +75,7 @@ function buildContext(body: GenerateMermaidBody): string | undefined {
 		parts.push(buildRefsContext(body.refs))
 	}
 	if (body.movementContext) {
-		parts.push('Pointer movement context (hover, dwell, circled regions):')
+		parts.push('Pointer movement context (hover, dwell, circled regions, clicks):')
 		parts.push(buildMovementContext(body.movementContext))
 	}
 	return parts.length > 0 ? parts.join('\n') : undefined

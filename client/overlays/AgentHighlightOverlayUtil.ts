@@ -81,7 +81,6 @@ export class AgentHighlightOverlayUtil extends OverlayUtil<AgentHighlightOverlay
 						bounds: toBoxModel(activeRequest.bounds),
 						color: 'tooltip',
 						generating: true,
-						label: `Agent ${agent.id.slice(0, 6)}'s view`,
 					},
 				})
 			}

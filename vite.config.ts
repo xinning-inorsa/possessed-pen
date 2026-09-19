@@ -12,5 +12,33 @@ export default defineConfig(() => {
 			cloudflare(),
 			react(),
 		],
+		resolve: {
+			alias: [
+				{
+					find: '@aws-sdk/client-bedrock-runtime/dist-es/runtimeConfig.js',
+					replacement: '@aws-sdk/client-bedrock-runtime/dist-es/runtimeConfig.browser.js',
+				},
+			],
+		},
+		environments: {
+			possessed_pen: {
+				resolve: {
+					conditions: ['workerd', 'worker', 'browser', 'import', 'module'],
+					mainFields: ['browser', 'module', 'main'],
+				},
+			},
+		},
+		ssr: {
+			noExternal: [
+				'deepagents',
+				'@langchain/aws',
+				'@langchain/core',
+				'@langchain/langgraph',
+				'@langchain/langgraph-checkpoint',
+				'langchain',
+				'@aws-sdk/client-bedrock-runtime',
+				'@smithy/fetch-http-handler',
+			],
+		},
 	}
 })

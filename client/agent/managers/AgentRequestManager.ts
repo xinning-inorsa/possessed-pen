@@ -98,6 +98,10 @@ export class AgentRequestManager extends BaseAgentManager {
 			data: request.data ?? [],
 			bounds: request.bounds ?? activeRequest?.bounds ?? this.agent.editor.getViewportPageBounds(),
 			contextItems: request.contextItems ?? [],
+			spatialRefs: request.spatialRefs,
+			movementContext: request.movementContext,
+			thinkingAttemptId: request.thinkingAttemptId,
+			onEditStep: request.onEditStep,
 		}
 	}
 

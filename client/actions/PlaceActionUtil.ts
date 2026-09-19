@@ -33,7 +33,7 @@ export const PlaceActionUtil = registerActionUtil(
 			if (!action.complete) return
 			const { editor } = this
 
-			const { side, sideOffset = 0, align, alignOffset = 0 } = action
+			const { side, sideOffset = 80, align, alignOffset = 0 } = action
 			const referenceShapeId = `shape:${action.referenceShapeId}` as TLShapeId
 			const shapeId = `shape:${action.shapeId}` as TLShapeId
 

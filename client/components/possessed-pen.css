@@ -184,6 +184,11 @@
 	pointer-events: auto;
 }
 
+/* Flex children need min-height: 0 so inner overflow-y scroll works. */
+.pp-bl-dock > .pp-thinking {
+	min-height: 0;
+}
+
 /* Layer timeline — collapsed chip + expandable panel */
 
 .pp-layer-timeline__chip {
@@ -1039,34 +1044,64 @@
 	height: 18px;
 	padding: 0 5px;
 	border-radius: var(--pp-radius-pill);
-	background: color-mix(in oklch, var(--pp-accent) 16%, transparent);
-	color: var(--pp-debug-ink);
+	background: color-mix(in oklch, var(--pp-text-subtle) 12%, transparent);
+	color: var(--pp-text-muted);
 	font-size: 10px;
 	font-weight: 700;
 	line-height: 1;
 }
 
+.pp-thinking__chip--active {
+	border-color: color-mix(in oklch, var(--pp-accent) 45%, var(--pp-border));
+	color: var(--pp-text);
+}
+
+.pp-thinking__chip--active .pp-thinking__chip-icon {
+	color: var(--pp-accent);
+	animation: pp-pulse 1.2s ease-in-out infinite;
+}
+
+.pp-thinking__chip--active .pp-thinking__chip-count {
+	background: color-mix(in oklch, var(--pp-accent) 16%, transparent);
+	color: var(--pp-debug-ink);
+}
+
 .pp-thinking {
-	width: calc(100vw - 32px);
-	max-width: calc(100vw - 32px);
+	width: min(420px, calc(100vw - 32px));
+	max-width: min(420px, calc(100vw - 32px));
 }
 
 .pp-thinking--expanded {
-	max-height: min(420px, 55vh);
 	display: flex;
 	flex-direction: column;
-	padding: 12px 14px;
+	min-height: 0;
+	max-height: min(560px, 72vh);
+	overflow-x: hidden;
+	overflow-y: auto;
+	padding: 0 14px 12px;
 	border-style: dashed;
 	border-color: color-mix(in oklch, var(--pp-debug-ink) 45%, var(--pp-border));
 	background: color-mix(in oklch, var(--pp-glass-bg) 88%, black 12%);
+	overscroll-behavior: contain;
+	-webkit-overflow-scrolling: touch;
+	scrollbar-width: thin;
+	scrollbar-color: color-mix(in oklch, var(--pp-border-strong) 80%, transparent) transparent;
 }
 
 .pp-thinking__header {
+	position: sticky;
+	top: 0;
+	z-index: 1;
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	margin-bottom: 10px;
+	margin: 0 -14px 10px;
+	padding: 12px 14px 10px;
 	flex-shrink: 0;
+	border-bottom: 1px solid color-mix(in oklch, var(--pp-border) 80%, transparent);
+	background: color-mix(in oklch, var(--pp-glass-bg) 88%, black 12%);
+	backdrop-filter: blur(var(--pp-glass-blur)) saturate(var(--pp-glass-saturate));
+	-webkit-backdrop-filter: blur(var(--pp-glass-blur)) saturate(var(--pp-glass-saturate));
 }
 
 .pp-thinking__title {
@@ -1084,8 +1119,46 @@
 	color: var(--pp-text-subtle);
 }
 
-.pp-thinking__clear {
+.pp-thinking__header-actions {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
 	margin-left: auto;
+}
+
+.pp-thinking__copy {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 28px;
+	height: 22px;
+	padding: 0 6px;
+	border: 1px solid var(--pp-border);
+	border-radius: var(--pp-radius-sm);
+	background: transparent;
+	color: var(--pp-text-subtle);
+	cursor: pointer;
+}
+
+.pp-thinking__copy:hover:not(:disabled) {
+	border-color: color-mix(in oklch, var(--pp-debug-ink) 45%, var(--pp-border));
+	color: var(--pp-text);
+}
+
+.pp-thinking__copy:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+.pp-thinking__copy-label {
+	font-family: var(--pp-font-mono);
+	font-size: 9px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+}
+
+.pp-thinking__clear {
 	padding: 2px 8px;
 	border: 1px solid var(--pp-border);
 	border-radius: var(--pp-radius-sm);
@@ -1128,11 +1201,11 @@
 }
 
 .pp-thinking__list {
-	overflow: auto;
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
-	scrollbar-width: thin;
+	min-width: 0;
+	padding-top: 1px;
 }
 
 .pp-thinking__empty {
@@ -1148,7 +1221,6 @@
 	border: 1px solid color-mix(in oklch, var(--pp-border) 90%, transparent);
 	border-radius: var(--pp-radius-sm);
 	background: color-mix(in oklch, var(--pp-chrome-bg) 70%, black 30%);
-	overflow: hidden;
 }
 
 .pp-thinking__attempt--running {
@@ -1209,6 +1281,10 @@
 	color: #ff6b6b;
 }
 
+.pp-thinking__attempt-step-count {
+	color: var(--pp-text-subtle);
+}
+
 .pp-thinking__attempt-duration {
 	margin-left: auto;
 	color: var(--pp-text-subtle);
@@ -1219,7 +1295,10 @@
 	padding: 0 10px 8px;
 	font-family: var(--pp-font-mono);
 	font-size: 10px;
+	line-height: 1.45;
 	color: var(--pp-text-muted);
+	overflow-wrap: anywhere;
+	white-space: pre-wrap;
 	opacity: 0.9;
 }
 
@@ -1269,7 +1348,11 @@
 
 .pp-thinking__step-title {
 	flex: 1;
+	min-width: 0;
 	color: var(--pp-text-muted);
+	line-height: 1.45;
+	overflow-wrap: anywhere;
+	white-space: normal;
 }
 
 .pp-thinking__step-duration {
@@ -1284,6 +1367,7 @@
 
 .pp-thinking__step-body {
 	padding: 0 8px 8px;
+	min-width: 0;
 }
 
 .pp-thinking__error {
@@ -1300,8 +1384,7 @@
 
 .pp-thinking__json {
 	margin: 0;
-	max-height: 160px;
-	overflow: auto;
+	max-height: min(240px, 40vh);
 	padding: 8px 10px;
 	border-radius: var(--pp-radius-sm);
 	border: 1px solid color-mix(in oklch, var(--pp-border) 80%, transparent);
@@ -1312,6 +1395,9 @@
 	color: var(--pp-text-muted);
 	white-space: pre-wrap;
 	word-break: break-word;
+	overflow: auto;
+	overscroll-behavior: contain;
+	-webkit-overflow-scrolling: touch;
 	scrollbar-width: thin;
 }
 
@@ -1605,9 +1691,10 @@
 
 .pp-inking-status {
 	display: inline-flex;
-	align-items: center;
+	align-items: flex-start;
 	gap: 10px;
-	padding: 6px 14px;
+	max-width: min(22rem, calc(100vw - 11rem));
+	padding: 8px 14px;
 	border-radius: var(--pp-radius-pill);
 	background: color-mix(in oklch, var(--pp-glass-bg) 90%, var(--pp-accent) 10%);
 	font-size: 12px;
@@ -1629,20 +1716,30 @@
 }
 
 .pp-inking-status__pulse {
+	flex-shrink: 0;
 	width: 8px;
 	height: 8px;
+	margin-top: 0.35em;
 	border-radius: 50%;
 	background: var(--pp-accent);
 	animation: pp-pulse 1.2s ease-in-out infinite;
 }
 
 .pp-inking-status__text {
+	flex: 1;
+	min-width: 0;
 	font-family: var(--pp-font-mono);
+	font-size: 12px;
+	line-height: 1.45;
 	letter-spacing: 0.02em;
+	overflow-wrap: anywhere;
+	white-space: normal;
 }
 
 .pp-inking-status__cancel {
 	display: inline-flex;
+	flex-shrink: 0;
+	align-self: center;
 	align-items: center;
 	gap: 6px;
 	margin-left: 4px;
@@ -1661,6 +1758,8 @@
 
 .pp-inking-status__end-call {
 	display: inline-flex;
+	flex-shrink: 0;
+	align-self: center;
 	align-items: center;
 	margin-left: 4px;
 	padding: 2px 10px;

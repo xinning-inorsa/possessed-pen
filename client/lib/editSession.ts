@@ -4,6 +4,8 @@ import { TLShapeId } from 'tldraw'
 export type EditSession = {
 	layerId: string
 	replaceShapeIds: TLShapeId[]
+	/** tldraw group wrapping demo / edit targets (Mermaid root group). */
+	parentId: TLShapeId | null
 }
 
 let current: EditSession | null = null

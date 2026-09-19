@@ -16,6 +16,15 @@ import {
 } from '../lib/thinkingLog'
 import { shouldRestructureCluster } from '../lib/shouldRestructureCluster'
 import { applyMermaidWithLayer } from '../mermaid/applyMermaidWithLayer'
+import { toTldrawShapeId } from '../lib/normalizeShapeId'
+import type { TranscriptWord } from '../../shared/types/TranscriptWord'
+import { resolveCanvasLayerId } from '../lib/resolveCanvasLayerId'
+import {
+	reparentShapesToCanvasFamily,
+	resolveCanvasParentId,
+} from '../lib/resolveCanvasParentId'
+import { elkTidyLayout } from '../lib/elkTidyLayout'
+import { tidyEditLayout } from '../lib/tidyEditLayout'
 import { getSelectionBounds, replaceInBounds } from '../mermaid/replaceInBounds'
 
 export type CommandStatus = {
@@ -26,17 +35,36 @@ export type CommandStatus = {
 
 function collectTargetShapeIds(
 	selectedIds: TLShapeId[],
-	refs?: SpatialRef[]
+	refs?: SpatialRef[],
+	movement?: MovementContext
 ): TLShapeId[] {
 	const ids = new Set<TLShapeId>(selectedIds)
+	const add = (id: string) => ids.add(toTldrawShapeId(id))
+
 	if (refs) {
 		for (const ref of refs) {
-			for (const id of ref.shapeIds) {
-				ids.add(id as TLShapeId)
-			}
+			for (const id of ref.shapeIds) add(id)
 		}
 	}
+
+	if (movement) {
+		for (const id of movement.hoveredShapeIds) add(id)
+		for (const region of movement.dwellRegions) {
+			for (const id of region.shapeIds) add(id)
+		}
+		for (const region of movement.circledRegions) {
+			for (const id of region.shapeIds) add(id)
+		}
+		for (const region of movement.clickRegions) {
+			for (const id of region.shapeIds) add(id)
+		}
+	}
+
 	return [...ids]
+}
+
+function canvasHasShapes(editor: Editor): boolean {
+	return editor.getCurrentPageShapeIds().size > 0
 }
 
 function tagShapesWithLayer(editor: Editor, shapeIds: TLShapeId[], layerId: string) {
@@ -144,23 +172,28 @@ export function usePenCommand(onStatusChange?: (status: CommandStatus) => void) 
 			options: {
 				refs?: SpatialRef[]
 				movementContext?: MovementContext
+				transcriptWords?: TranscriptWord[]
 				attemptId: string
 				quiet?: boolean
 			}
 		) => {
-			const layer = addLayer({
-				id: newLayerId(),
-				name: prompt.slice(0, 40),
-				shapeIds: [],
-				prompt,
-			})
+			const inheritedLayerId = resolveCanvasLayerId(editor, targetIds)
+			const inheritedParentId = resolveCanvasParentId(editor, targetIds)
+			const layerId =
+				inheritedLayerId ??
+				addLayer({
+					id: newLayerId(),
+					name: prompt.slice(0, 40),
+					shapeIds: [],
+					prompt,
+				}).id
 
 			const previousSelection = editor.getSelectedShapeIds()
 			if (targetIds.length) {
 				editor.select(...targetIds)
 			}
 
-			const bounds = getSelectionBounds(editor, targetIds) ?? editor.getViewportPageBounds()
+			const bounds = editor.getViewportPageBounds()
 			const message = buildEditAgentMessage(prompt, {
 				editor,
 				targetShapeIds: targetIds,
@@ -168,7 +201,7 @@ export function usePenCommand(onStatusChange?: (status: CommandStatus) => void) 
 				movementContext: options.movementContext,
 			})
 
-			setEditSession({ layerId: layer.id, replaceShapeIds: targetIds })
+			setEditSession({ layerId, replaceShapeIds: targetIds, parentId: inheritedParentId })
 
 			try {
 				await agent.prompt({
@@ -176,6 +209,15 @@ export function usePenCommand(onStatusChange?: (status: CommandStatus) => void) 
 					userMessages: [prompt],
 					bounds,
 					source: 'user',
+					spatialRefs: options.refs,
+					movementContext: options.movementContext,
+					transcriptWords: options.transcriptWords,
+					thinkingAttemptId: options.attemptId,
+					onEditStep: (stepMessage) => {
+						// Voice (`quiet`) owns the status pill; agent narration is for the trace only.
+						if (options.quiet || stepMessage === 'Done.') return
+						setStatus({ message: stepMessage, variant: 'inking' })
+					},
 				})
 			} finally {
 				setEditSession(null)
@@ -186,19 +228,58 @@ export function usePenCommand(onStatusChange?: (status: CommandStatus) => void) 
 				}
 			}
 
+			const { mutationsApplied, mutationFailures } = agent.getLastEditLoopStats()
+
+			if (mutationFailures > 0 && mutationsApplied === 0) {
+				addThinkingStep(options.attemptId, {
+					kind: 'error',
+					title: 'Edit failed',
+					body: { mutationFailures },
+				})
+				finishThinkingAttempt(options.attemptId, 'error')
+				if (!options.quiet) setStatus('Could not apply edit', 'error')
+				return false
+			}
+
+			if (mutationsApplied === 0) {
+				addThinkingStep(options.attemptId, {
+					kind: 'ink',
+					title: 'No canvas changes',
+				})
+				finishThinkingAttempt(options.attemptId, 'ok')
+				if (!options.quiet) setStatus('No changes on canvas', 'error')
+				return false
+			}
+
 			const createdIds = agent.lints.getCreatedShapeIds()
-			tagShapesWithLayer(editor, createdIds, layer.id)
+			try {
+				await elkTidyLayout(editor, createdIds, targetIds)
+			} catch (error) {
+				console.warn('elkTidyLayout failed, falling back to tidyEditLayout:', error)
+				try {
+					tidyEditLayout(editor, createdIds, { anchorIds: targetIds })
+				} catch (fallbackError) {
+					console.warn('tidyEditLayout failed:', fallbackError)
+				}
+			}
+			tagShapesWithLayer(editor, createdIds, layerId)
+			reparentShapesToCanvasFamily(editor, createdIds, inheritedParentId)
 
 			const layerShapeIds = editor
 				.getCurrentPageShapes()
-				.filter((s) => s.meta?.layerId === layer.id)
+				.filter((s) => s.meta?.layerId === layerId)
 				.map((s) => s.id as string)
-			updateLayerShapeIds(layer.id, layerShapeIds)
+			updateLayerShapeIds(layerId, layerShapeIds)
 
 			addThinkingStep(options.attemptId, {
 				kind: 'ink',
 				title: 'Canvas patched',
-				body: { shapeCount: layerShapeIds.length, layerId: layer.id },
+				body: {
+					createdCount: createdIds.length,
+					layerShapeCount: layerShapeIds.length,
+					layerId,
+					inheritedLayer: Boolean(inheritedLayerId),
+				},
 			})
 			finishThinkingAttempt(options.attemptId, 'ok')
 			if (!options.quiet) setStatus('Updated', 'success')
@@ -215,14 +296,20 @@ export function usePenCommand(onStatusChange?: (status: CommandStatus) => void) 
 				quiet?: boolean
 				movementContext?: MovementContext
 				thinkingAttemptId?: string
+				transcriptWords?: TranscriptWord[]
 			}
 		) => {
 			const prompt = text.trim()
 			if (!prompt || isGenerating) return
 
 			const attemptId = options?.thinkingAttemptId ?? createThinkingAttempt('ink')
-			const targetIds = collectTargetShapeIds(selectedIds, refs)
-			const isEdit = targetIds.length > 0
+			const targetIds = collectTargetShapeIds(
+				selectedIds,
+				refs,
+				options?.movementContext
+			)
+			// Never stack Mermaid on top of existing ink — edit in place when the board has shapes.
+			const isEdit = targetIds.length > 0 || canvasHasShapes(editor)
 
 			setInking(true)
 			if (!options?.quiet) {
@@ -243,6 +330,7 @@ export function usePenCommand(onStatusChange?: (status: CommandStatus) => void) 
 						await runSurgicalEdit(prompt, targetIds, {
 							refs,
 							movementContext: options?.movementContext,
+							transcriptWords: options?.transcriptWords,
 							attemptId,
 							quiet: options?.quiet,
 						})

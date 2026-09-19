@@ -19,17 +19,18 @@ An agent that only draws — steer with lasso and a command bar, not chat.
 ## Product (do not regress)
 
 - No chat transcript UI. Command bar + Demo + layer timeline only.
-- Demo button uses **hardcoded Mermaid** — works offline, zero typing for judges.
+- Demo button uses **hardcoded native tldraw shapes** (`client/demo/authFlowNative.ts`) — works offline, zero typing for judges.
 - Empty canvas / generate: `/api/generate-mermaid` → `createMermaidDiagram`.
 - Edit calls: agent streams surgical actions by default; `replace_in_bounds` only for explicit cluster restructure (or agent `apply_mermaid` fallback).
-- Agent working mode: **Pen and screenshot disabled**. No whole-diagram coordinate layout.
+- Agent working mode: **Pen disabled**. One viewport **screenshot per request** is attached as read-only context (no vision loop). No whole-diagram coordinate layout.
+- Post-edit spacing: **elkjs** semi-interactive cluster layout (`client/lib/elkTidyLayout.ts`) with the hand-rolled `tidyEditLayout` as fallback.
 
 ## Do NOT build
 
-Chat UI, freehand art demos, multiplayer, vision-first loops, Fabric/raw canvas, dagre/ELK unless Mermaid fails.
+Chat UI, freehand art demos, multiplayer, vision-first loops, Fabric/raw canvas.
 
 ## Kill criteria
 
-- Bedrock down → Demo + hardcoded Mermaid still works.
+- Bedrock down → Demo + hardcoded native shapes still work.
 - Mermaid fails → 3 JSON template packs.
 - Selection redo flaky → ship layer-level redo only.

@@ -5,6 +5,10 @@ export const TRAIL_WINDOW_MS = 30_000
 export const DWELL_MIN_MS = 300
 export const DWELL_RADIUS_PX = 28
 export const DEIXIS_GESTURE_WINDOW_MS = 500
+/** Include pointer samples this long after VAD speech-end (say "this" → then click). */
+export const POINTER_UTTERANCE_GRACE_MS = 2_500
+export const DEIXIS_CLICK_WINDOW_BEFORE_MS = 400
+export const DEIXIS_CLICK_WINDOW_AFTER_MS = 2_500
 export const CIRCLE_CLOSURE_PX = 48
 export const CIRCLE_MIN_PATH_PX = 120
 export const CIRCLE_MIN_AREA_PX2 = 2_500
@@ -114,12 +118,14 @@ export function updateDwellTracker(
 		tracker.anchorMs = tMs
 		tracker.anchorPoint = { ...pagePoint }
 		tracker.shapeIds = [...shapeIds]
+		tracker.lastEmittedEndMs = -1
 		return null
 	}
 
 	const durationMs = tMs - tracker.anchorMs
-	if (durationMs < DWELL_MIN_MS || shapeIds.length === 0) return null
-	if (tracker.lastEmittedEndMs >= tMs - 100) return null
+	if (durationMs < DWELL_MIN_MS) return null
+	// Emit one dwell per stationary episode — re-arm only after the cursor leaves.
+	if (tracker.lastEmittedEndMs > 0) return null
 
 	tracker.lastEmittedEndMs = tMs
 	return {
@@ -150,7 +156,6 @@ export function detectCircledRegion(
 	if (!bounds || bounds.w * bounds.h < CIRCLE_MIN_AREA_PX2) return null
 
 	const shapeIds = getShapeIdsInBounds(editor, bounds)
-	if (shapeIds.length === 0) return null
 
 	return {
 		tMsStart: first.tMs,
@@ -208,6 +213,51 @@ export function findDwellAtTime(
 		}
 	}
 	return best
+}
+
+export function findClickAtTime(
+	samples: PointerSample[],
+	tMs: number,
+	windowBeforeMs = DEIXIS_CLICK_WINDOW_BEFORE_MS,
+	windowAfterMs = DEIXIS_CLICK_WINDOW_AFTER_MS
+): PointerSample | undefined {
+	const clicks = samples.filter(
+		(sample) =>
+			sample.eventType === 'up' &&
+			sample.tMs >= tMs - windowBeforeMs &&
+			sample.tMs <= tMs + windowAfterMs
+	)
+	if (clicks.length === 0) return undefined
+
+	const afterWord = clicks.filter((sample) => sample.tMs >= tMs)
+	if (afterWord.length > 0) {
+		return afterWord.sort((a, b) => a.tMs - b.tMs)[0]
+	}
+
+	return clicks.sort(
+		(a, b) => Math.abs(a.tMs - tMs) - Math.abs(b.tMs - tMs)
+	)[0]
+}
+
+export function extractClickRegions(samples: PointerSample[]): Array<{
+	tMs: number
+	shapeIds: string[]
+	pagePoint: { x: number; y: number }
+}> {
+	const regions: Array<{ tMs: number; shapeIds: string[]; pagePoint: { x: number; y: number } }> = []
+	for (const sample of samples) {
+		if (sample.eventType !== 'up') continue
+		const last = regions[regions.length - 1]
+		if (
+			last &&
+			Math.abs(last.tMs - sample.tMs) < 80 &&
+			sameShapeSet(last.shapeIds, sample.shapeIds)
+		) {
+			continue
+		}
+		regions.push({ tMs: sample.tMs, shapeIds: [...sample.shapeIds], pagePoint: { ...sample.pagePoint } })
+	}
+	return regions
 }
 
 export function findCircleAtTime(

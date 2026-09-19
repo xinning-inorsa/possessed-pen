@@ -1,5 +1,6 @@
 import type { AgentRequest } from '../../shared/types/AgentRequest'
 import type { TldrawAgent } from '../agent/TldrawAgent'
+import { ensureSteeringTool } from '../lib/canvasSteeringTools'
 import type { AgentModeDefinition, AgentModeType } from './AgentModeDefinitions'
 
 /**
@@ -41,6 +42,7 @@ const _AGENT_MODE_CHART: Record<AgentModeDefinition['type'], AgentModeNode> = {
 			agent.todos.reset()
 			// agent.userAction.clearHistory()
 			agent.context.clear()
+			ensureSteeringTool(agent.editor)
 
 			// When entering working mode from idling, clear created shapes tracking
 			// This handles the case where a user prompt starts while in idling mode,
@@ -56,6 +58,10 @@ const _AGENT_MODE_CHART: Record<AgentModeDefinition['type'], AgentModeNode> = {
 		},
 
 		onPromptStart(agent, request) {
+			ensureSteeringTool(agent.editor)
+			// Align chat origin with the request viewport so shape coords and create defaults
+			// stay near what the user sees (offset space origin = viewport top-left).
+			agent.chatOrigin.setOrigin({ x: request.bounds.x, y: request.bounds.y })
 			// Clear created shapes tracking and flush todos when a new user prompt starts
 			// This handles cases where a prompt starts while already in working mode (e.g., continuation, interrupt)
 			if (request.source === 'user') {

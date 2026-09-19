@@ -6,6 +6,10 @@ import { getShapeLabel } from './deixisResolver'
 function buildRefsContext(refs: SpatialRef[]): string {
 	return refs
 		.map((ref) => {
+			if (ref.pagePoint) {
+				const { x, y } = ref.pagePoint
+				return `- "${ref.word}" → empty canvas at (${Math.round(x)}, ${Math.round(y)})`
+			}
 			const labels = ref.labels?.length ? ref.labels.join(', ') : ref.shapeIds.join(', ')
 			return `- "${ref.word}" → ${labels} (ids: ${ref.shapeIds.join(', ')})`
 		})
@@ -28,6 +32,13 @@ function buildMovementContext(context: MovementContext): string {
 			`- Circled (${Math.round(w)}×${Math.round(h)} at ${Math.round(x)},${Math.round(y)}): ${labels}`
 		)
 	}
+	for (const click of context.clickRegions) {
+		const labels = click.labels?.length ? click.labels.join(', ') : click.shapeIds.join(', ')
+		const point = click.pagePoint
+			? ` at (${Math.round(click.pagePoint.x)}, ${Math.round(click.pagePoint.y)})`
+			: ''
+		lines.push(`- Clicked at ${Math.round(click.tMs)}ms: ${labels || 'empty canvas'}${point}`)
+	}
 	return lines.join('\n')
 }
 
@@ -41,10 +52,13 @@ export function buildEditAgentMessage(
 	}
 ): string {
 	const parts: string[] = [
-		'Edit the existing diagram on the canvas. Patch shapes in place — do not redraw the whole board.',
-		'Prefer label, update, delete, create+place (relative to a reference shape), and arrows with fromId/toId.',
-		'Only use apply_mermaid when the user explicitly asked to replace or restructure a cluster.',
-		'Never use pen. Do not lay out an entire new diagram with raw x,y coordinates.',
+		'Edit the existing diagram on the canvas. Read /canvas/topology.md for the full chart before mutating.',
+		'Patch in place — do not redraw the board. Batch create+place pairs in one turn when adding a small stack.',
+		'Never regenerate or redraw the whole diagram. Never stack a new flowchart on top of the existing one.',
+		'Replacing one node with a small stack is OK — create+place boxes, connect_shapes to wire them and to downstream (see topology.md), then delete only the targeted node.',
+		'Fan-out (e.g. load balancer → servers): connect every parallel branch to the same downstream the replaced node had — not just one branch.',
+		'Read /canvas/spacing.md for overlaps. Use place with sideOffset ~140 for vertical stacks, alignOffset ~100 between horizontal fan-out siblings; the client tidies spacing after your edit.',
+		'Never use pen. Do not lay out an entire diagram with raw x,y coordinates.',
 	]
 
 	if (options.targetShapeIds.length) {
@@ -53,6 +67,10 @@ export function buildEditAgentMessage(
 			.filter((l) => l && !l.startsWith('shape:'))
 		parts.push(
 			`Target shapes (${options.targetShapeIds.length}): ${labels.length ? labels.join(', ') : options.targetShapeIds.join(', ')}`
+		)
+	} else {
+		parts.push(
+			'No explicit selection — read /canvas/shapes.json and use inspect_shapes to find targets. Edit existing shapes only; do not add a parallel copy of the diagram.'
 		)
 	}
 

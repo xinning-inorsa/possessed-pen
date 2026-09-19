@@ -274,15 +274,17 @@ function snapshotRange<T extends { tMsStart: number; tMsEnd: number }>(
 
 /** Pointer samples for one utterance, timestamps relative to utterance start. */
 export function snapshotUtteranceSamples(startMs: number, endMs: number): PointerSample[] {
-	if (!activeSession) return []
-	return activeSession.pointerSamples
+	const session = activeSession ?? lastSession
+	if (!session) return []
+	return session.pointerSamples
 		.filter((s) => s.tMs >= startMs && s.tMs <= endMs)
 		.map((s) => ({ ...s, tMs: s.tMs - startMs }))
 }
 
 export function snapshotUtteranceDwellRegions(startMs: number, endMs: number): DwellRegion[] {
-	if (!activeSession) return []
-	return snapshotRange(activeSession.dwellRegions, startMs, endMs).map((region) => ({
+	const session = activeSession ?? lastSession
+	if (!session) return []
+	return snapshotRange(session.dwellRegions, startMs, endMs).map((region) => ({
 		...region,
 		tMsStart: Math.max(region.tMsStart, startMs) - startMs,
 		tMsEnd: Math.min(region.tMsEnd, endMs) - startMs,
@@ -290,8 +292,9 @@ export function snapshotUtteranceDwellRegions(startMs: number, endMs: number): D
 }
 
 export function snapshotUtteranceCircledRegions(startMs: number, endMs: number): CircledRegion[] {
-	if (!activeSession) return []
-	return snapshotRange(activeSession.circledRegions, startMs, endMs).map((region) => ({
+	const session = activeSession ?? lastSession
+	if (!session) return []
+	return snapshotRange(session.circledRegions, startMs, endMs).map((region) => ({
 		...region,
 		tMsStart: Math.max(region.tMsStart, startMs) - startMs,
 		tMsEnd: Math.min(region.tMsEnd, endMs) - startMs,

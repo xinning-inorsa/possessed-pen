@@ -3,11 +3,13 @@ import {
 	convertPartialFocusedShapeToTldrawShape,
 	FOCUSED_TO_GEO_TYPES,
 } from '../../shared/format/convertFocusedShapeToTldrawShape'
-import { FocusedShape } from '../../shared/format/FocusedShape'
+import { FocusedShape, getFocusedShapeSchemaNames } from '../../shared/format/FocusedShape'
 import { CreateAction } from '../../shared/schema/AgentActionSchemas'
 import { Streaming } from '../../shared/types/Streaming'
 import { AgentHelpers } from '../AgentHelpers'
 import { AgentActionUtil, registerActionUtil } from './AgentActionUtil'
+
+const VALID_FOCUSED_SHAPE_TYPES = new Set(getFocusedShapeSchemaNames())
 
 export const CreateActionUtil = registerActionUtil(
 	class CreateActionUtil extends AgentActionUtil<CreateAction> {
@@ -23,8 +25,7 @@ export const CreateActionUtil = registerActionUtil(
 		override sanitizeAction(action: Streaming<CreateAction>, helpers: AgentHelpers) {
 			const { shape } = action
 
-			// If there's no shape yet, return action (will be filtered in applyAction)
-			if (!shape) return action
+			if (!shape?._type || !VALID_FOCUSED_SHAPE_TYPES.has(shape._type)) return null
 
 			// Ensure the created shape has a unique ID (only if shapeId is present)
 			if (shape.shapeId) {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { formatThinkingLogMarkdown } from '../lib/formatThinkingLogMarkdown'
 import { popupClassName, usePopupPresence } from '../hooks/usePopupPresence'
 import {
 	clearThinkingLog,
@@ -52,37 +53,61 @@ function stepPreview(step: ThinkingStep): string | undefined {
 	return undefined
 }
 
+function truncateForDisplay(value: unknown, maxString = 240): unknown {
+	if (typeof value === 'string') {
+		if (value.length <= maxString) return value
+		return `${value.slice(0, maxString)}… (${value.length} chars)`
+	}
+	if (Array.isArray(value)) {
+		return value.map((item) => truncateForDisplay(item, maxString))
+	}
+	if (value && typeof value === 'object') {
+		const out: Record<string, unknown> = {}
+		for (const [key, item] of Object.entries(value)) {
+			out[key] = truncateForDisplay(item, maxString)
+		}
+		return out
+	}
+	return value
+}
+
 function JsonBlock({ value }: { value: unknown }) {
 	return (
-		<pre className="pp-thinking__json">{JSON.stringify(value, null, 2)}</pre>
+		<pre className="pp-thinking__json">{JSON.stringify(truncateForDisplay(value), null, 2)}</pre>
 	)
 }
 
-function StepSection({ step }: { step: ThinkingStep }) {
-	const [open, setOpen] = useState(step.kind === 'error' || step.kind === 'api-response')
+function StepSection({ step, defaultOpen }: { step: ThinkingStep; defaultOpen: boolean }) {
+	const [open, setOpen] = useState(defaultOpen)
+	const hasBody = step.body !== undefined || Boolean(step.error)
 	const preview = stepPreview(step)
+
+	useEffect(() => {
+		if (defaultOpen) setOpen(true)
+	}, [defaultOpen, step.id])
 
 	return (
 		<div className={'pp-thinking__step pp-thinking__step--' + step.kind}>
 			<button
 				type="button"
 				className="pp-thinking__step-header"
-				onClick={() => setOpen((v) => !v)}
+				onClick={() => hasBody && setOpen((v) => !v)}
 				aria-expanded={open}
+				disabled={!hasBody}
 			>
 				<span className="pp-thinking__step-kind">{step.kind}</span>
 				<span className="pp-thinking__step-title">{step.title}</span>
 				{step.durationMs != null && (
 					<span className="pp-thinking__step-duration">{formatDuration(step.durationMs)}</span>
 				)}
-				<span className="pp-thinking__step-chevron" aria-hidden>
-					{open ? '▾' : '▸'}
-				</span>
+				{hasBody && (
+					<span className="pp-thinking__step-chevron" aria-hidden>
+						{open ? '▾' : '▸'}
+					</span>
+				)}
 			</button>
-			{!open && preview && (
-				<div className="pp-thinking__step-preview">{preview}</div>
-			)}
-			{open && (
+			{!open && preview && <div className="pp-thinking__step-preview">{preview}</div>}
+			{open && hasBody && (
 				<div className="pp-thinking__step-body">
 					{step.error && <div className="pp-thinking__error">{step.error}</div>}
 					{step.body !== undefined && <JsonBlock value={step.body} />}
@@ -92,9 +117,10 @@ function StepSection({ step }: { step: ThinkingStep }) {
 	)
 }
 
-function AttemptCard({ attempt }: { attempt: ThinkingAttempt }) {
-	const [open, setOpen] = useState(attempt.status === 'running')
+function AttemptCard({ attempt, isLatest }: { attempt: ThinkingAttempt; isLatest: boolean }) {
+	const [open, setOpen] = useState(isLatest || attempt.status === 'running')
 	const duration = attemptDuration(attempt)
+	const latestStepId = attempt.steps.at(-1)?.id
 	const firstPrompt = attempt.steps.find(
 		(s) => s.kind === 'deixis' || s.kind === 'api-request'
 	)
@@ -109,6 +135,10 @@ function AttemptCard({ attempt }: { attempt: ThinkingAttempt }) {
 				? promptBody.prompt
 				: undefined
 
+	useEffect(() => {
+		if (isLatest || attempt.status === 'running') setOpen(true)
+	}, [attempt.status, attempt.steps.length, isLatest])
+
 	return (
 		<article className={'pp-thinking__attempt pp-thinking__attempt--' + attempt.status}>
 			<button
@@ -122,6 +152,7 @@ function AttemptCard({ attempt }: { attempt: ThinkingAttempt }) {
 				<span className={'pp-thinking__attempt-status pp-thinking__attempt-status--' + attempt.status}>
 					{statusLabel(attempt.status)}
 				</span>
+				<span className="pp-thinking__attempt-step-count">{attempt.steps.length} steps</span>
 				{duration != null && (
 					<span className="pp-thinking__attempt-duration">{formatDuration(duration)}</span>
 				)}
@@ -129,7 +160,7 @@ function AttemptCard({ attempt }: { attempt: ThinkingAttempt }) {
 					{open ? '▾' : '▸'}
 				</span>
 			</button>
-			{!open && promptPreview && typeof promptPreview === 'string' && (
+			{!open && promptPreview && (
 				<div className="pp-thinking__attempt-preview">
 					{promptPreview.length > 80 ? `${promptPreview.slice(0, 77)}…` : promptPreview}
 				</div>
@@ -137,7 +168,15 @@ function AttemptCard({ attempt }: { attempt: ThinkingAttempt }) {
 			{open && (
 				<div className="pp-thinking__attempt-steps">
 					{attempt.steps.map((step) => (
-						<StepSection key={step.id} step={step} />
+						<StepSection
+							key={step.id}
+							step={step}
+							defaultOpen={
+								step.kind === 'error' ||
+								step.kind === 'api-response' ||
+								step.id === latestStepId
+							}
+						/>
 					))}
 				</div>
 			)}
@@ -148,11 +187,47 @@ function AttemptCard({ attempt }: { attempt: ThinkingAttempt }) {
 export function ThinkingPanel() {
 	const attempts = useThinkingLog()
 	const [expanded, setExpanded] = useState(false)
+	const [copied, setCopied] = useState(false)
 	const panelRef = useRef<HTMLElement>(null)
+	const stickToBottomRef = useRef(true)
 
 	const collapse = useCallback(() => setExpanded(false), [])
 	const expand = useCallback(() => setExpanded(true), [])
 	const panel = usePopupPresence(expanded)
+
+	const runningCount = attempts.filter((a) => a.status === 'running').length
+	const isThinking = runningCount > 0
+	const hasTrace = attempts.length > 0
+
+	useEffect(() => {
+		if (isThinking) setExpanded(true)
+	}, [isThinking])
+
+	useEffect(() => {
+		if (!expanded) {
+			stickToBottomRef.current = true
+		}
+	}, [expanded])
+
+	useEffect(() => {
+		const panel = panelRef.current
+		if (!expanded || !panel) return
+
+		const onScroll = () => {
+			const distanceFromBottom = panel.scrollHeight - panel.scrollTop - panel.clientHeight
+			stickToBottomRef.current = distanceFromBottom < 48
+		}
+
+		panel.addEventListener('scroll', onScroll, { passive: true })
+		return () => panel.removeEventListener('scroll', onScroll)
+	}, [expanded])
+
+	useEffect(() => {
+		const panel = panelRef.current
+		if (!expanded || !panel) return
+		if (!stickToBottomRef.current && !isThinking) return
+		panel.scrollTop = panel.scrollHeight
+	}, [attempts, expanded, isThinking])
 
 	useEffect(() => {
 		if (!expanded) return
@@ -178,29 +253,34 @@ export function ThinkingPanel() {
 		}
 	}, [expanded, collapse])
 
-	const runningCount = attempts.filter((a) => a.status === 'running').length
-	const isThinking = runningCount > 0
-
-	useEffect(() => {
-		if (!isThinking) {
-			setExpanded(false)
+	const copyTrace = useCallback(async () => {
+		if (attempts.length === 0) return
+		const markdown = formatThinkingLogMarkdown(attempts)
+		try {
+			await navigator.clipboard.writeText(markdown)
+			setCopied(true)
+			window.setTimeout(() => setCopied(false), 2000)
+		} catch {
+			setCopied(false)
 		}
-	}, [isThinking])
+	}, [attempts])
 
-	if (!isThinking && !panel.mounted) {
+	if (!hasTrace && !panel.mounted) {
 		return null
 	}
 
 	return (
 		<>
-			{isThinking && !expanded && (
+			{hasTrace && !expanded && (
 				<button
 					type="button"
-					className="pp-thinking__chip pp-glass"
+					className={
+						'pp-thinking__chip pp-glass' + (isThinking ? ' pp-thinking__chip--active' : '')
+					}
 					onClick={expand}
 					aria-expanded={false}
 					aria-controls="pp-thinking-panel"
-					aria-label="Thinking in progress. Expand."
+					aria-label={isThinking ? 'Thinking in progress. Expand trace.' : 'Expand thinking trace.'}
 				>
 					<span className="pp-thinking__chip-icon" aria-hidden>
 						<svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -213,8 +293,8 @@ export function ThinkingPanel() {
 							<circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.25" />
 						</svg>
 					</span>
-					<span className="pp-thinking__chip-label">Thinking</span>
-					<span className="pp-thinking__chip-count">●</span>
+					<span className="pp-thinking__chip-label">{isThinking ? 'Thinking' : 'Trace'}</span>
+					<span className="pp-thinking__chip-count">{attempts.length}</span>
 				</button>
 			)}
 			{panel.mounted && (
@@ -238,31 +318,63 @@ export function ThinkingPanel() {
 							{attempts.length} attempt{attempts.length === 1 ? '' : 's'}
 							{runningCount > 0 ? ` · ${runningCount} running` : ''}
 						</span>
-						<button
-							type="button"
-							className="pp-thinking__clear"
-							onClick={clearThinkingLog}
-							disabled={attempts.length === 0}
-						>
-							Clear
-						</button>
-						<button
-							type="button"
-							className="pp-thinking__collapse"
-							onClick={collapse}
-							aria-expanded={true}
-							aria-controls="pp-thinking-panel"
-							aria-label="Collapse thinking log"
-						>
-							<svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden>
-								<path
-									d="M2 2l6 6M8 2L2 8"
-									stroke="currentColor"
-									strokeWidth="1.25"
-									strokeLinecap="round"
-								/>
-							</svg>
-						</button>
+						<div className="pp-thinking__header-actions">
+							<button
+								type="button"
+								className="pp-thinking__copy"
+								onClick={() => void copyTrace()}
+								disabled={attempts.length === 0}
+								aria-label="Copy trace as markdown"
+								title="Copy trace as markdown"
+							>
+								{copied ? (
+									<span className="pp-thinking__copy-label">Copied</span>
+								) : (
+									<svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
+										<rect
+											x="4"
+											y="4"
+											width="6"
+											height="6"
+											rx="1"
+											stroke="currentColor"
+											strokeWidth="1.1"
+										/>
+										<path
+											d="M3 8V3a1 1 0 0 1 1-1h5"
+											stroke="currentColor"
+											strokeWidth="1.1"
+											strokeLinecap="round"
+										/>
+									</svg>
+								)}
+							</button>
+							<button
+								type="button"
+								className="pp-thinking__clear"
+								onClick={clearThinkingLog}
+								disabled={attempts.length === 0}
+							>
+								Clear
+							</button>
+							<button
+								type="button"
+								className="pp-thinking__collapse"
+								onClick={collapse}
+								aria-expanded={true}
+								aria-controls="pp-thinking-panel"
+								aria-label="Collapse thinking log"
+							>
+								<svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden>
+									<path
+										d="M2 2l6 6M8 2L2 8"
+										stroke="currentColor"
+										strokeWidth="1.25"
+										strokeLinecap="round"
+									/>
+								</svg>
+							</button>
+						</div>
 					</div>
 
 					<div className="pp-thinking__list">
@@ -271,7 +383,9 @@ export function ThinkingPanel() {
 								No ink attempts yet. Start a call and speak, or generate from selection.
 							</p>
 						) : (
-							attempts.map((attempt) => <AttemptCard key={attempt.id} attempt={attempt} />)
+							attempts.map((attempt, index) => (
+								<AttemptCard key={attempt.id} attempt={attempt} isLatest={index === 0} />
+							))
 						)}
 					</div>
 				</aside>

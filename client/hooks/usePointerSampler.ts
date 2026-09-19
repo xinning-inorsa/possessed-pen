@@ -32,8 +32,12 @@ export function usePointerSampler(editor: Editor) {
 			const pagePoint = editor.inputs.getCurrentPagePoint()
 			const screenPoint = editor.inputs.getCurrentScreenPoint()
 			const shape = editor.getShapeAtPoint(pagePoint, { hitInside: true })
-			const shapeIds = shape ? [shape.id as string] : []
+			let shapeIds = shape ? [shape.id as string] : []
 			const selectedShapeIds = editor.getSelectedShapeIds() as TLShapeId[] as string[]
+			// After click, tldraw selection is the strongest target signal.
+			if (eventType === 'up' && selectedShapeIds.length > 0) {
+				shapeIds = [...selectedShapeIds]
+			}
 
 			const sample = {
 				tMs,
@@ -72,6 +76,7 @@ export function usePointerSampler(editor: Editor) {
 
 	const onPointerUp = useCallback(() => {
 		captureSample('up')
+		requestAnimationFrame(() => captureSample('up'))
 	}, [captureSample])
 
 	const start = useCallback(() => {

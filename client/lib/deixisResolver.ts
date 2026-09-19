@@ -2,26 +2,63 @@ import { Editor, TLShapeId } from 'tldraw'
 import type { MovementContext } from '../../shared/types/MovementContext'
 import type { SpatialRef } from '../../shared/types/SpatialRef'
 import type { CircledRegion, DwellRegion, PointerSample, TranscriptWord } from './spatialTranscript'
+import { toSimpleShapeIds, toTldrawShapeId } from './normalizeShapeId'
 import {
 	collectHoveredShapeIds,
 	computePathBounds,
+	extractClickRegions,
 	findCircleAtTime,
+	findClickAtTime,
 	findDwellAtTime,
 	findNearestSample,
 	getShapeIdsInBounds,
 } from './pointerGestures'
 
 const DEICTIC_PATTERN = /^(this|that|these|those|here|it)$/i
+const LOCATION_DEICTIC_PATTERN = /^(here|there)$/i
 
 export function isDeicticWord(word: string): boolean {
 	const token = word.replace(/^[^\w]+|[^\w]+$/g, '')
 	return DEICTIC_PATTERN.test(token)
 }
 
+export function isLocationDeictic(word: string): boolean {
+	const token = word.replace(/^[^\w]+|[^\w]+$/g, '')
+	return LOCATION_DEICTIC_PATTERN.test(token)
+}
+
 export type DeixisResolution = {
 	refs: SpatialRef[]
 	resolvedText: string
 	movementContext?: MovementContext
+}
+
+/** Rewrite deictic words in place with their grounded referents (GazePointAR pattern). */
+function rewriteTranscriptInline(transcript: string, refs: SpatialRef[]): string {
+	if (refs.length === 0) return transcript.trim()
+
+	// One annotation per word, first occurrence wins (refs are already deduped by target).
+	const byWord = new Map<string, SpatialRef>()
+	for (const ref of refs) {
+		if (!byWord.has(ref.word)) byWord.set(ref.word, ref)
+	}
+
+	const annotated = new Set<string>()
+	return transcript
+		.split(/(\s+)/)
+		.map((piece) => {
+			const token = piece.replace(/^[^\w]+|[^\w]+$/g, '').toLowerCase()
+			const ref = byWord.get(token)
+			if (!ref || annotated.has(token)) return piece
+
+			annotated.add(token)
+			const target = ref.pagePoint
+				? `→ (${Math.round(ref.pagePoint.x)}, ${Math.round(ref.pagePoint.y)})`
+				: (ref.labels?.length ? ref.labels.join(' + ') : ref.shapeIds.join(', '))
+			return `${piece} [${target}]`
+		})
+		.join('')
+		.trim()
 }
 
 type ResolveDeixisInput = {
@@ -57,16 +94,27 @@ export function resolveDeixis({
 
 		const tMs = ((timedWord.start + timedWord.end) / 2) * 1000
 		const shapeIds = resolveShapeIdsAtTime(tMs, samples, dwellRegions, circledRegions, editor)
-		if (shapeIds.length === 0) continue
+		const isLocation = LOCATION_DEICTIC_PATTERN.test(token)
 
-		const key = `${token}:${shapeIds.join(',')}`
+		if (shapeIds.length === 0 && !isLocation) continue
+
+		const pagePoint =
+			isLocation && shapeIds.length === 0
+				? (findClickAtTime(samples, tMs)?.pagePoint ?? findNearestSample(samples, tMs)?.pagePoint)
+				: undefined
+
+		if (shapeIds.length === 0 && !pagePoint) continue
+
+		const key = `${token}:${shapeIds.join(',')}:${pagePoint ? `${pagePoint.x},${pagePoint.y}` : ''}`
 		if (seen.has(key)) continue
 		seen.add(key)
 
+		const simpleIds = toSimpleShapeIds(shapeIds)
 		refs.push({
 			word: token.toLowerCase(),
-			shapeIds,
-			labels: shapeIds.map((id) => getShapeLabel(editor, id)),
+			shapeIds: simpleIds,
+			labels: simpleIds.map((id) => getShapeLabel(editor, `shape:${id}` as TLShapeId)),
+			...(pagePoint ? { pagePoint } : {}),
 		})
 	}
 
@@ -79,7 +127,7 @@ export function resolveDeixis({
 
 	return {
 		refs,
-		resolvedText: transcript.trim(),
+		resolvedText: rewriteTranscriptInline(transcript, refs),
 		movementContext,
 	}
 }
@@ -91,6 +139,11 @@ function resolveShapeIdsAtTime(
 	circledRegions: CircledRegion[],
 	editor: Editor
 ): string[] {
+	const click = findClickAtTime(samples, tMs)
+	if (click?.shapeIds.length) {
+		return click.shapeIds
+	}
+
 	const sample = findNearestSample(samples, tMs)
 	if (sample?.shapeIds.length) {
 		return sample.shapeIds
@@ -124,26 +177,43 @@ function buildMovementContext(
 	circledRegions: CircledRegion[],
 	editor: Editor
 ): MovementContext | undefined {
-	const hoveredShapeIds = collectHoveredShapeIds(samples)
-	const dwellPayload = dwellRegions.map((region) => ({
-		tMsStart: region.tMsStart,
-		tMsEnd: region.tMsEnd,
-		durationMs: region.durationMs,
-		shapeIds: region.shapeIds,
-		labels: region.shapeIds.map((id) => getShapeLabel(editor, id)),
-	}))
-	const circlePayload = circledRegions.map((region) => ({
-		tMsStart: region.tMsStart,
-		tMsEnd: region.tMsEnd,
-		bounds: region.bounds,
-		shapeIds: region.shapeIds,
-		labels: region.shapeIds.map((id) => getShapeLabel(editor, id)),
-	}))
+	const hoveredShapeIds = toSimpleShapeIds(collectHoveredShapeIds(samples))
+	const dwellPayload = dwellRegions.map((region) => {
+		const shapeIds = toSimpleShapeIds(region.shapeIds)
+		return {
+			tMsStart: region.tMsStart,
+			tMsEnd: region.tMsEnd,
+			durationMs: region.durationMs,
+			shapeIds,
+			labels: shapeIds.map((id) => getShapeLabel(editor, `shape:${id}` as TLShapeId)),
+			pagePoint: region.pagePoint,
+		}
+	})
+	const circlePayload = circledRegions.map((region) => {
+		const shapeIds = toSimpleShapeIds(region.shapeIds)
+		return {
+			tMsStart: region.tMsStart,
+			tMsEnd: region.tMsEnd,
+			bounds: region.bounds,
+			shapeIds,
+			labels: shapeIds.map((id) => getShapeLabel(editor, `shape:${id}` as TLShapeId)),
+		}
+	})
+	const clickPayload = extractClickRegions(samples).map((region) => {
+		const shapeIds = toSimpleShapeIds(region.shapeIds)
+		return {
+			tMs: region.tMs,
+			shapeIds,
+			labels: shapeIds.map((id) => getShapeLabel(editor, `shape:${id}` as TLShapeId)),
+			pagePoint: region.pagePoint,
+		}
+	})
 
 	if (
 		hoveredShapeIds.length === 0 &&
 		dwellPayload.length === 0 &&
-		circlePayload.length === 0
+		circlePayload.length === 0 &&
+		clickPayload.length === 0
 	) {
 		return undefined
 	}
@@ -152,6 +222,7 @@ function buildMovementContext(
 		hoveredShapeIds,
 		dwellRegions: dwellPayload,
 		circledRegions: circlePayload,
+		clickRegions: clickPayload,
 	}
 }
 
@@ -189,8 +260,21 @@ export function getShapeLabel(editor: Editor, shapeId: string): string {
 }
 
 export function flashResolvedShapes(editor: Editor, refs: SpatialRef[], durationMs = 1200): void {
-	const shapeIds = [...new Set(refs.flatMap((ref) => ref.shapeIds))] as TLShapeId[]
-	if (shapeIds.length === 0) return
-	editor.setHintingShapes(shapeIds)
-	window.setTimeout(() => editor.setHintingShapes([]), durationMs)
+	// refs carry simple IDs — setHintingShapes requires full tldraw shape IDs.
+	// A validation failure here crashes the editor (which disposes the agent app and
+	// blanks the page), so never let it throw.
+	try {
+		const shapeIds = [...new Set(refs.flatMap((ref) => ref.shapeIds))].map(toTldrawShapeId)
+		if (shapeIds.length === 0) return
+		editor.setHintingShapes(shapeIds)
+		window.setTimeout(() => {
+			try {
+				editor.setHintingShapes([])
+			} catch {
+				// editor may be gone
+			}
+		}, durationMs)
+	} catch {
+		// hinting is cosmetic — never crash the editor over it
+	}
 }
