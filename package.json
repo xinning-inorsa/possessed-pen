@@ -2,11 +2,12 @@
 	"name": "possessed-pen",
 	"version": "0.0.0",
 	"private": true,
-	"homepage": "https://tldraw.dev",
+	"description": "Voice-first canvas agent that only draws — talk over tldraw; Bedrock emits Mermaid; layout is deterministic.",
+	"homepage": "https://github.com/xinning-inorsa/possessed-pen",
 	"license": "MIT",
 	"author": {
-		"name": "tldraw GB Ltd.",
-		"email": "hello@tldraw.com"
+		"name": "Xinning Wang",
+		"email": "xinning@inorsa.com"
 	},
 	"type": "module",
 	"scripts": {
@@ -20,9 +21,10 @@
 		"@ai-sdk/anthropic": "^2.0.80",
 		"@ai-sdk/google": "^2.0.74",
 		"@ai-sdk/openai": "^2.0.106",
-		"@aws-sdk/client-transcribe-streaming": "^3.1136.0",
 		"@cloudflare/vite-plugin": "^1.29.1",
 		"@google/generative-ai": "^0.24.1",
+		"@smithy/core": "^3.34.1",
+		"@smithy/signature-v4": "^5.7.3",
 		"@tldraw/mermaid": "^5.4.2",
 		"@tldraw/tlschema": "^5.4.2",
 		"@worker-tools/json-stream": "^0.1.0-pre.12",

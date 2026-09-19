@@ -75,30 +75,21 @@ export class AgentService {
 		const modelDefinition = getAgentModelDefinition(modelName)
 		const systemPrompt = buildSystemPrompt(prompt)
 
-		// Build messages with provider-specific options
-		const messages: ModelMessage[] = []
+		// AI SDK 7 forbids system messages in `messages`; pass them as `instructions`.
+		// Anthropic requires an explicit cache breakpoint at the end of the system prompt.
+		const instructions: string | ModelMessage =
+			provider === 'anthropic.messages'
+				? {
+						role: 'system',
+						content: systemPrompt,
+						providerOptions: {
+							anthropic: { cacheControl: { type: 'ephemeral' } },
+						},
+					}
+				: systemPrompt
 
-		// Add system prompt with Anthropic caching if applicable
-		if (provider === 'anthropic.messages') {
-			// Anthropic requires explicit cache breakpoints. We set one at the end of the
-			// system prompt to cache all system content (which generally changes together).
-			messages.push({
-				role: 'system',
-				content: systemPrompt,
-				providerOptions: {
-					anthropic: { cacheControl: { type: 'ephemeral' } },
-				},
-			})
-		} else {
-			messages.push({
-				role: 'system',
-				content: systemPrompt,
-			})
-		}
-
-		// Add prompt messages
 		const promptMessages = buildMessages(prompt)
-		messages.push(...promptMessages)
+		const messages: ModelMessage[] = [...promptMessages]
 
 		// Check for debug flags and log if enabled
 		const debugPart = prompt.debug as DebugPart | undefined
@@ -124,6 +115,7 @@ export class AgentService {
 		try {
 			const { textStream } = streamText({
 				model,
+				instructions,
 				messages,
 				maxOutputTokens: 8192,
 				// Opus 4.7+ removed `temperature` (and top_p/top_k); sending it returns a 400.
@@ -132,9 +124,9 @@ export class AgentService {
 				onAbort() {
 					console.warn('Stream actions aborted')
 				},
-				onError: (e) => {
-					console.error('Stream text error:', e)
-					throw e
+				onError: ({ error }) => {
+					console.error('Stream text error:', error)
+					throw error
 				},
 			})
 

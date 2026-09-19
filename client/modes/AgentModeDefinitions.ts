@@ -1,9 +1,14 @@
 import type { AgentAction } from '../../shared/types/AgentAction'
 import type { PromptPart } from '../../shared/types/PromptPart'
 import { ApplyMermaidActionUtil } from '../actions/ApplyMermaidActionUtil'
+import { CreateActionUtil } from '../actions/CreateActionUtil'
+import { DeleteActionUtil } from '../actions/DeleteActionUtil'
+import { LabelActionUtil } from '../actions/LabelActionUtil'
 import { MessageActionUtil } from '../actions/MessageActionUtil'
+import { PlaceActionUtil } from '../actions/PlaceActionUtil'
 import { ThinkActionUtil } from '../actions/ThinkActionUtil'
 import { UnknownActionUtil } from '../actions/UnknownActionUtil'
+import { UpdateActionUtil } from '../actions/UpdateActionUtil'
 import { AgentViewportBoundsPartUtil } from '../parts/AgentViewportBoundsPartUtil'
 import { BlurryShapesPartUtil } from '../parts/BlurryShapesPartUtil'
 import { ContextItemsPartUtil } from '../parts/ContextItemsPartUtil'
@@ -51,6 +56,11 @@ export const AGENT_MODE_DEFINITIONS = [
 			TimePartUtil.type,
 		],
 		actions: [
+			LabelActionUtil.type,
+			DeleteActionUtil.type,
+			CreateActionUtil.type,
+			PlaceActionUtil.type,
+			UpdateActionUtil.type,
 			ApplyMermaidActionUtil.type,
 			MessageActionUtil.type,
 			ThinkActionUtil.type,

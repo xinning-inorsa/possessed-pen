@@ -1,3 +1,5 @@
+import { appendAudioEnvelopeSample } from './spatialTranscript'
+
 export type VadOptions = {
 	silenceMs?: number
 	minSpeechMs?: number
@@ -8,12 +10,18 @@ export type VadOptions = {
 export type VadCallbacks = {
 	onSpeechStart: () => void
 	onSpeechEnd: () => void
+	/** Fires once when RMS crosses the lower energy gate (mic activity, not yet speech). */
+	onEnergy?: () => void
 }
 
 const DEFAULTS = {
-	silenceMs: 900,
+	/** Longer pause before splitting — avoids fragmenting natural speech. */
+	silenceMs: 1500,
 	minSpeechMs: 350,
-	threshold: 0.018,
+	/** Speech gate — keep near useAudioLevel (`rms * 10`) so bars and VAD agree. */
+	threshold: 0.01,
+	/** Lower gate for "mic saw activity" without starting an utterance. */
+	energyThreshold: 0.006,
 	pollMs: 50,
 }
 
@@ -23,7 +31,10 @@ export function createVadMonitor(
 	callbacks: VadCallbacks,
 	options: VadOptions = {}
 ): { stop: () => void } {
-	const { silenceMs, minSpeechMs, threshold, pollMs } = { ...DEFAULTS, ...options }
+	const { silenceMs, minSpeechMs, threshold, energyThreshold, pollMs } = {
+		...DEFAULTS,
+		...options,
+	}
 
 	const audioContext = new AudioContext()
 	const source = audioContext.createMediaStreamSource(stream)
@@ -36,6 +47,7 @@ export function createVadMonitor(
 	let speaking = false
 	let speechStartedAt = 0
 	let silenceStartedAt = 0
+	let energySeen = false
 
 	const intervalId = window.setInterval(() => {
 		analyser.getFloatTimeDomainData(buffer)
@@ -44,7 +56,13 @@ export function createVadMonitor(
 			sum += buffer[i] * buffer[i]
 		}
 		const rms = Math.sqrt(sum / buffer.length)
+		appendAudioEnvelopeSample(rms)
 		const now = performance.now()
+
+		if (!energySeen && rms >= energyThreshold) {
+			energySeen = true
+			callbacks.onEnergy?.()
+		}
 
 		if (rms >= threshold) {
 			silenceStartedAt = 0

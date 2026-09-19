@@ -1,5 +1,5 @@
 import { Editor } from '@tldraw/editor'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useRef, useState, type MutableRefObject } from 'react'
 import type { MovementContext } from '../../shared/types/MovementContext'
 import type { SpatialRef } from '../../shared/types/SpatialRef'
 import {
@@ -14,6 +14,11 @@ import {
 	setLiveCallState,
 	snapshotUtterancePointerState,
 } from '../lib/spatialTranscript'
+import {
+	addThinkingStep,
+	createThinkingAttempt,
+	finishThinkingAttempt,
+} from '../lib/thinkingLog'
 import { transcribeAudio } from '../lib/transcribeAudio'
 import { createVadMonitor } from '../lib/vad'
 import type { CommandStatus } from './usePenCommand'
@@ -26,7 +31,11 @@ type UseVoiceSessionOptions = {
 	submit: (
 		text: string,
 		refs?: SpatialRef[],
-		options?: { quiet?: boolean; movementContext?: MovementContext }
+		options?: {
+			quiet?: boolean
+			movementContext?: MovementContext
+			thinkingAttemptId?: string
+		}
 	) => Promise<void>
 	isGenerating: boolean
 	setStatus: (status: CommandStatus | string | null, variant?: CommandStatus['variant']) => void
@@ -61,10 +70,14 @@ export function useVoiceSession({
 	const mediaStreamRef = useRef<MediaStream | null>(null)
 	const utteranceRecorderRef = useRef<MediaRecorder | null>(null)
 	const utteranceChunksRef = useRef<Blob[]>([])
+	const sessionRecorderRef = useRef<MediaRecorder | null>(null)
+	const sessionChunksRef = useRef<Blob[]>([])
 	const utteranceStartMsRef = useRef(0)
 	const callStartMsRef = useRef(0)
 	const vadStopRef = useRef<(() => void) | null>(null)
 	const processingUtteranceRef = useRef(false)
+	const energyDetectedRef = useRef(false)
+	const transcriptSucceededRef = useRef(false)
 	const isOnCallRef = useRef(false)
 	const isGeneratingRef = useRef(isGenerating)
 	const endCallRef = useRef<() => Promise<void>>(async () => {})
@@ -89,11 +102,13 @@ export function useVoiceSession({
 		vadStopRef.current?.()
 		vadStopRef.current = null
 
-		const recorder = utteranceRecorderRef.current
-		if (recorder && recorder.state !== 'inactive') {
-			recorder.stop()
+		for (const recorder of [utteranceRecorderRef.current, sessionRecorderRef.current]) {
+			if (recorder && recorder.state !== 'inactive') {
+				recorder.stop()
+			}
 		}
 		utteranceRecorderRef.current = null
+		sessionRecorderRef.current = null
 
 		for (const track of mediaStreamRef.current?.getTracks() ?? []) {
 			track.stop()
@@ -102,25 +117,68 @@ export function useVoiceSession({
 		setMediaStream(null)
 	}, [])
 
+	const stopMediaRecorder = useCallback(
+		async (recorder: MediaRecorder, chunks: Blob[]): Promise<Blob | null> => {
+			if (recorder.state === 'inactive') {
+				if (chunks.length === 0) return null
+				const mimeType = recorder.mimeType || 'audio/webm'
+				return new Blob(chunks, { type: mimeType })
+			}
+
+			return new Promise<Blob>((resolve, reject) => {
+				recorder.addEventListener(
+					'stop',
+					() => {
+						const mimeType = recorder.mimeType || 'audio/webm'
+						resolve(new Blob(chunks, { type: mimeType }))
+					},
+					{ once: true }
+				)
+				recorder.addEventListener('error', () => reject(new Error('Recording failed')), {
+					once: true,
+				})
+				recorder.stop()
+			})
+		},
+		[]
+	)
+
 	const stopUtteranceRecorder = useCallback(async (): Promise<Blob | null> => {
 		const recorder = utteranceRecorderRef.current
-		if (!recorder || recorder.state === 'inactive') return null
+		if (!recorder) return null
+		return stopMediaRecorder(recorder, utteranceChunksRef.current)
+	}, [stopMediaRecorder])
 
-		return new Promise<Blob>((resolve, reject) => {
-			recorder.addEventListener(
-				'stop',
-				() => {
-					const mimeType = recorder.mimeType || 'audio/webm'
-					resolve(new Blob(utteranceChunksRef.current, { type: mimeType }))
-				},
-				{ once: true }
-			)
-			recorder.addEventListener('error', () => reject(new Error('Recording failed')), {
-				once: true,
+	const stopSessionRecorder = useCallback(async (): Promise<Blob | null> => {
+		const recorder = sessionRecorderRef.current
+		if (!recorder) return null
+		return stopMediaRecorder(recorder, sessionChunksRef.current)
+	}, [stopMediaRecorder])
+
+	const startStreamRecorder = useCallback(
+		(
+			stream: MediaStream,
+			chunksRef: MutableRefObject<Blob[]>,
+			recorderRef: MutableRefObject<MediaRecorder | null>
+		) => {
+			chunksRef.current = []
+			const mimeType = pickRecorderMimeType()
+			const recorder = mimeType
+				? new MediaRecorder(stream, { mimeType })
+				: new MediaRecorder(stream)
+
+			recorder.addEventListener('dataavailable', (event) => {
+				if (event.data.size > 0) {
+					chunksRef.current.push(event.data)
+				}
 			})
-			recorder.stop()
-		})
-	}, [])
+
+			recorder.start(100)
+			recorderRef.current = recorder
+			console.info(`${LOG_PREFIX} recorder start`, { mimeType: recorder.mimeType })
+		},
+		[]
+	)
 
 	const processUtterance = useCallback(
 		async (blob: Blob, utteranceStartMs: number, utteranceEndMs: number) => {
@@ -136,6 +194,7 @@ export function useVoiceSession({
 			})
 
 			processingUtteranceRef.current = true
+			const attemptId = createThinkingAttempt('voice')
 			setIsTranscribing(true)
 			setLiveCallState({
 				isListening: false,
@@ -144,12 +203,21 @@ export function useVoiceSession({
 			})
 			setCallStatus('Transcribing…')
 
+			const transcribeStartedAt = performance.now()
+
 			try {
 				const { transcript, words } = await transcribeAudio(blob)
 				console.info(`${LOG_PREFIX} transcribe ok`, {
 					chars: transcript.length,
 					words: words?.length ?? 0,
 				})
+				addThinkingStep(attemptId, {
+					kind: 'transcribe',
+					title: 'Transcription',
+					body: { transcript, words },
+					durationMs: Math.round(performance.now() - transcribeStartedAt),
+				})
+
 				const pointerState = snapshotUtterancePointerState(utteranceStartMs, utteranceEndMs)
 				const durationMs = utteranceEndMs - utteranceStartMs
 				const { refs, resolvedText, movementContext } = resolveDeixis({
@@ -160,6 +228,17 @@ export function useVoiceSession({
 					circledRegions: pointerState.circledRegions,
 					recordingDurationMs: durationMs,
 					editor,
+				})
+
+				addThinkingStep(attemptId, {
+					kind: 'deixis',
+					title: 'Deixis resolution',
+					body: {
+						transcript,
+						resolvedText,
+						refs: refs.length > 0 ? refs : undefined,
+						movementContext,
+					},
 				})
 
 				appendUtterance({
@@ -191,8 +270,10 @@ export function useVoiceSession({
 				await submit(resolvedText, refs.length > 0 ? refs : undefined, {
 					quiet: true,
 					movementContext,
+					thinkingAttemptId: attemptId,
 				})
 				console.info(`${LOG_PREFIX} submit ok`)
+				transcriptSucceededRef.current = true
 
 				if (isOnCallRef.current) {
 					setCallStatus(`On call… · "${snippet}"`)
@@ -202,6 +283,12 @@ export function useVoiceSession({
 			} catch (e) {
 				const message = e instanceof Error ? e.message : 'Transcription failed'
 				console.error(`${LOG_PREFIX} utterance failed`, message, e)
+				addThinkingStep(attemptId, {
+					kind: 'error',
+					title: 'Voice pipeline failed',
+					error: message,
+				})
+				finishThinkingAttempt(attemptId, 'error')
 				if (isOnCallRef.current) {
 					setCallStatus(message, 'error')
 				} else {
@@ -249,22 +336,8 @@ export function useVoiceSession({
 		const stream = mediaStreamRef.current
 		if (!stream || utteranceRecorderRef.current) return
 
-		utteranceChunksRef.current = []
 		utteranceStartMsRef.current = performance.now() - callStartMsRef.current
-
-		const mimeType = pickRecorderMimeType()
-		const recorder = mimeType
-			? new MediaRecorder(stream, { mimeType })
-			: new MediaRecorder(stream)
-
-		recorder.addEventListener('dataavailable', (event) => {
-			if (event.data.size > 0) {
-				utteranceChunksRef.current.push(event.data)
-			}
-		})
-
-		recorder.start(100)
-		utteranceRecorderRef.current = recorder
+		startStreamRecorder(stream, utteranceChunksRef, utteranceRecorderRef)
 		setIsListening(true)
 		setLiveCallState({
 			isListening: true,
@@ -273,14 +346,17 @@ export function useVoiceSession({
 			pendingTranscript: undefined,
 		})
 		setCallStatus('Listening…')
-		console.info(`${LOG_PREFIX} speechStart`, { mimeType: recorder.mimeType })
-	}, [setCallStatus])
+		console.info(`${LOG_PREFIX} speechStart`)
+	}, [setCallStatus, startStreamRecorder])
 
 	const endCall = useCallback(async () => {
 		if (!isOnCallRef.current) return
 
 		console.info(`${LOG_PREFIX} endCall`, {
 			hasPendingRecorder: Boolean(utteranceRecorderRef.current),
+			hasSessionRecorder: Boolean(sessionRecorderRef.current),
+			energyDetected: energyDetectedRef.current,
+			transcriptSucceeded: transcriptSucceededRef.current,
 			isTranscribing: processingUtteranceRef.current,
 		})
 
@@ -288,20 +364,67 @@ export function useVoiceSession({
 		setIsOnCall(false)
 		setIsListening(false)
 
-		const hadPendingUtterance = Boolean(utteranceRecorderRef.current)
-		if (hadPendingUtterance) {
-			await finishUtteranceRecording()
-		}
-
 		stopSampler()
+
+		const hadPendingUtterance = Boolean(utteranceRecorderRef.current)
+		const utteranceStartMs = utteranceStartMsRef.current
+		const sessionEndMs = performance.now() - callStartMsRef.current
+
+		const utteranceBlobPromise = stopUtteranceRecorder()
+		const sessionBlobPromise = stopSessionRecorder()
 		cleanupStream()
 		finalizeActiveSession()
 
-		// Keep success/error from processUtterance; only clear idle call chrome.
-		if (!hadPendingUtterance && !processingUtteranceRef.current) {
-			setStatus(null)
-		}
-	}, [cleanupStream, finishUtteranceRecording, setStatus, stopSampler])
+		void (async () => {
+			const [utteranceBlob, sessionBlob] = await Promise.all([
+				utteranceBlobPromise,
+				sessionBlobPromise,
+			])
+
+			// Full session only when VAD never produced a transcript (missed speech).
+			const shouldFlushSession =
+				energyDetectedRef.current &&
+				sessionBlob &&
+				sessionBlob.size > 0 &&
+				!transcriptSucceededRef.current
+
+			if (shouldFlushSession) {
+				console.info(`${LOG_PREFIX} endCall session flush`, {
+					bytes: sessionBlob.size,
+					type: sessionBlob.type,
+					durationMs: Math.round(sessionEndMs),
+				})
+				await processUtterance(sessionBlob, 0, sessionEndMs)
+			} else if (hadPendingUtterance && utteranceBlob && utteranceBlob.size > 0) {
+				await processUtterance(utteranceBlob, utteranceStartMs, sessionEndMs)
+			} else if (
+				!processingUtteranceRef.current &&
+				energyDetectedRef.current &&
+				!transcriptSucceededRef.current
+			) {
+				setStatus(
+					"Couldn't make out speech — speak closer to the mic and try again",
+					'error'
+				)
+			}
+
+			if (
+				!hadPendingUtterance &&
+				!shouldFlushSession &&
+				!processingUtteranceRef.current &&
+				!energyDetectedRef.current
+			) {
+				setStatus(null)
+			}
+		})()
+	}, [
+		cleanupStream,
+		processUtterance,
+		setStatus,
+		stopSampler,
+		stopSessionRecorder,
+		stopUtteranceRecorder,
+	])
 
 	endCallRef.current = endCall
 
@@ -320,7 +443,10 @@ export function useVoiceSession({
 
 			const session = beginSpatialTranscriptSession()
 			callStartMsRef.current = session.startedAt
+			energyDetectedRef.current = false
+			transcriptSucceededRef.current = false
 			startSampler()
+			startStreamRecorder(stream, sessionChunksRef, sessionRecorderRef)
 
 			isOnCallRef.current = true
 			setIsOnCall(true)
@@ -328,7 +454,11 @@ export function useVoiceSession({
 			console.info(`${LOG_PREFIX} startCall`)
 
 			vadStopRef.current = createVadMonitor(stream, {
+				onEnergy: () => {
+					energyDetectedRef.current = true
+				},
 				onSpeechStart: () => {
+					energyDetectedRef.current = true
 					if (isGeneratingRef.current || processingUtteranceRef.current) return
 					startUtteranceRecording()
 				},
@@ -351,6 +481,7 @@ export function useVoiceSession({
 		isTranscribing,
 		setCallStatus,
 		startSampler,
+		startStreamRecorder,
 		startUtteranceRecording,
 	])
 

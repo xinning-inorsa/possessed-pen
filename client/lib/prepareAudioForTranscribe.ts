@@ -1,8 +1,19 @@
 export type PreparedTranscribeAudio = {
 	blob: Blob
 	filename: string
-	mediaEncoding: 'ogg-opus' | 'pcm'
+	mediaEncoding: 'pcm'
 	sampleRate: number
+	durationSec: number
+	peakAmplitude: number
+}
+
+export function pcmPeakAmplitude(pcm: Uint8Array): number {
+	const samples = new Int16Array(pcm.buffer, pcm.byteOffset, pcm.byteLength / 2)
+	let peak = 0
+	for (let i = 0; i < samples.length; i++) {
+		peak = Math.max(peak, Math.abs(samples[i]))
+	}
+	return peak
 }
 
 async function blobToPcm16k(blob: Blob): Promise<Uint8Array> {
@@ -45,23 +56,16 @@ async function blobToPcm16k(blob: Blob): Promise<Uint8Array> {
 export async function prepareAudioForTranscribe(
 	blob: Blob
 ): Promise<PreparedTranscribeAudio> {
-	const type = blob.type.toLowerCase()
-	if (type.includes('ogg') || (type.includes('opus') && !type.includes('webm'))) {
-		return {
-			blob,
-			filename: 'recording.ogg',
-			mediaEncoding: 'ogg-opus',
-			sampleRate: 48000,
-		}
-	}
-
 	const pcm = await blobToPcm16k(blob)
 	const pcmBuffer = new ArrayBuffer(pcm.byteLength)
 	new Uint8Array(pcmBuffer).set(pcm)
+	const sampleCount = pcm.byteLength / 2
 	return {
 		blob: new Blob([pcmBuffer], { type: 'application/octet-stream' }),
 		filename: 'recording.pcm',
 		mediaEncoding: 'pcm',
 		sampleRate: 16000,
+		durationSec: sampleCount / 16000,
+		peakAmplitude: pcmPeakAmplitude(pcm),
 	}
 }

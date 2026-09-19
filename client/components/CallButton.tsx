@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useAgent } from '../agent/TldrawAgentAppProvider'
 import { AudioLevelBars } from './AudioLevelBars'
 import { useAudioLevel } from '../hooks/useAudioLevel'
+import { useMagneticHover } from '../hooks/useMagneticHover'
 import { usePenCommand, type CommandStatus } from '../hooks/usePenCommand'
 import { useVoiceSession } from '../hooks/useVoiceSession'
 
@@ -24,6 +25,10 @@ export function CallButton({ onStatusChange, isEmptyCanvas }: CallButtonProps) {
 
 	const showAudioLevel = isOnCall || isListening
 	const audioLevel = useAudioLevel(mediaStream, showAudioLevel)
+
+	const isActive = isOnCall || isListening
+	const showIdleEmpty = isEmptyCanvas && !isActive && !isGenerating
+	const magnetic = useMagneticHover(!isActive && !isGenerating)
 
 	useEffect(() => {
 		const onKeyDown = (e: KeyboardEvent) => {
@@ -50,32 +55,41 @@ export function CallButton({ onStatusChange, isEmptyCanvas }: CallButtonProps) {
 		return () => window.removeEventListener('keydown', onKeyDown)
 	}, [cancel, endCall, isGenerating, isOnCall])
 
-	const isActive = isOnCall || isListening
-	const showIdleEmpty = isEmptyCanvas && !isActive && !isGenerating
-
 	return (
-		<button
-			type="button"
-			className={`pp-call-button${isActive ? ' pp-call-button--active' : ''}${isListening ? ' pp-call-button--listening' : ''}${showIdleEmpty ? ' pp-call-button--idle-empty' : ''}`}
-			disabled={micDisabled}
-			aria-label={isOnCall ? 'End call' : 'Start call'}
-			aria-pressed={isOnCall}
-			onClick={() => void toggleCall()}
+		<div
+			ref={magnetic.ref}
+			className="pp-call-magnetic"
+			style={magnetic.style}
+			onMouseMove={magnetic.onMouseMove}
+			onMouseLeave={magnetic.onMouseLeave}
 		>
-			{isActive && <span className="pp-call-button__pulse" aria-hidden />}
-			<AudioLevelBars level={audioLevel} active={showAudioLevel} />
-			<span className="pp-call-button__icon" aria-hidden>
-				<svg width="18" height="18" viewBox="0 0 16 16" fill="none">
-					<rect x="5.5" y="2" width="5" height="8" rx="2.5" fill="currentColor" />
-					<path
-						d="M3.5 8a4.5 4.5 0 0 0 9 0M8 12.5V15"
-						stroke="currentColor"
-						strokeWidth="1.5"
-						strokeLinecap="round"
-					/>
-				</svg>
-			</span>
-			<span className="pp-call-button__label">{isOnCall ? 'End call' : 'Call'}</span>
-		</button>
+			<button
+				type="button"
+				className={`pp-call-button pp-glass${isActive ? ' pp-call-button--active' : ''}${isListening ? ' pp-call-button--listening' : ''}${showIdleEmpty ? ' pp-call-button--idle-empty' : ''}`}
+				disabled={micDisabled}
+				aria-label={isOnCall ? 'End call' : 'Start call'}
+				aria-pressed={isOnCall}
+				onClick={() => void toggleCall()}
+			>
+				{isActive && <span className="pp-call-button__pulse" aria-hidden />}
+				<AudioLevelBars
+					level={audioLevel}
+					active={showAudioLevel}
+					idleShimmer={showIdleEmpty}
+				/>
+				<span className="pp-call-button__icon" aria-hidden>
+					<svg width="18" height="18" viewBox="0 0 16 16" fill="none">
+						<rect x="5.5" y="2" width="5" height="8" rx="2.5" fill="currentColor" />
+						<path
+							d="M3.5 8a4.5 4.5 0 0 0 9 0M8 12.5V15"
+							stroke="currentColor"
+							strokeWidth="1.5"
+							strokeLinecap="round"
+						/>
+					</svg>
+				</span>
+				<span className="pp-call-button__label">{isOnCall ? 'End call' : 'Call'}</span>
+			</button>
+		</div>
 	)
 }

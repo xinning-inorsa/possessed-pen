@@ -91,12 +91,14 @@ export async function generateMermaid(request: IRequest, env: Environment) {
 	}
 
 	const context = buildContext(body)
+	const userPrompt = context ? `${context}\n\nUser request: ${prompt}` : prompt
+	const debug = new URL(request.url).searchParams.get('debug') === '1'
 
 	try {
 		const { text } = await generateText({
 			model: getBedrockLanguageModel(env),
 			system: MERMAID_SYSTEM,
-			prompt: context ? `${context}\n\nUser request: ${prompt}` : prompt,
+			prompt: userPrompt,
 			temperature: 0,
 		})
 
@@ -105,7 +107,10 @@ export async function generateMermaid(request: IRequest, env: Environment) {
 			return error(502, 'Model did not return valid Mermaid')
 		}
 
-		return json({ mermaid })
+		return json({
+			mermaid,
+			...(debug ? { debug: { systemPrompt: MERMAID_SYSTEM, userPrompt } } : {}),
+		})
 	} catch (e) {
 		console.error('generate-mermaid error', e)
 		const message =

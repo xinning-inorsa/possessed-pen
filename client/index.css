@@ -2,31 +2,55 @@
 @import url('tldraw/tldraw.css');
 
 /* ------------------------------------------------------------------ */
-/* Design tokens — Cursor/xAI hackathon aesthetic                       */
-/* Near-black canvas, warm ink text, Cursor orange accent, glass chrome */
+/* Design tokens — possessed instrument                                 */
+/* Deep canvas, warm ink, Cursor orange, liquid glass HUD               */
 /* ------------------------------------------------------------------ */
 
 :root {
-	--pp-canvas: #1a1c22;
-	--pp-canvas-grid: #252830;
-	--pp-chrome-bg: oklch(0.22 0.012 260 / 0.82);
-	--pp-chrome-hover: oklch(0.28 0.014 260 / 0.55);
+	--pp-canvas: #12141a;
+	--pp-canvas-grid: #1a1d24;
+	--pp-glass-bg: oklch(0.2 0.014 260 / 0.78);
+	--pp-chrome-bg: var(--pp-glass-bg);
+	--pp-chrome-hover: oklch(0.26 0.016 260 / 0.62);
+	--pp-glass-blur: 20px;
+	--pp-glass-saturate: 1.3;
+	--pp-glass-inset: inset 0 1px 0 oklch(1 0 0 / 0.1);
 	--pp-border: oklch(1 0 0 / 0.1);
-	--pp-border-strong: oklch(1 0 0 / 0.18);
+	--pp-border-strong: oklch(1 0 0 / 0.2);
 	--pp-text: oklch(0.96 0.008 80);
 	--pp-text-muted: oklch(0.78 0.01 80);
-	--pp-text-subtle: oklch(0.58 0.01 80);
+	--pp-text-subtle: oklch(0.56 0.01 80);
 	--pp-accent: #f54e00;
 	--pp-accent-foreground: #fff;
 	--pp-success: #5ec269;
 	--pp-error: #e85d6a;
-	--pp-shadow-chrome: 0 8px 32px oklch(0 0 0 / 0.35);
-	--pp-shadow-bar: 0 12px 48px oklch(0 0 0 / 0.45), 0 0 0 1px oklch(1 0 0 / 0.04);
+	--pp-debug-ink: color-mix(in oklch, var(--pp-accent) 45%, var(--pp-text-subtle));
+	--pp-shadow-chrome: 0 8px 32px oklch(0 0 0 / 0.42);
+	--pp-shadow-bar: 0 12px 48px oklch(0 0 0 / 0.5), 0 0 0 1px oklch(1 0 0 / 0.05);
 	--pp-radius-sm: 6px;
-	--pp-radius-panel: 12px;
+	--pp-radius-panel: 14px;
 	--pp-radius-pill: 999px;
 	--pp-font-sans: 'IBM Plex Sans', system-ui, sans-serif;
 	--pp-font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+	--pp-duration-popup: 280ms;
+	--pp-ease-spring: linear(
+		0,
+		0.006 0.8%,
+		0.025 1.7%,
+		0.101 3.5%,
+		0.562 10.1%,
+		0.756 13.7%,
+		0.853 15.8%,
+		0.937 18.1%,
+		0.989 20.5%,
+		1.015 23%,
+		1.025 25.8%,
+		1.021 29%,
+		1.001 37%,
+		0.998 41%,
+		1 49%,
+		1
+	);
 
 	/* Bridge to tldraw dark theme */
 	--tl-color-background: var(--pp-canvas);
@@ -85,12 +109,63 @@ body,
 	height: 100%;
 }
 
-/* Subtle vignette so chrome reads on projector */
+/* Film grain — always on, pointer-events none */
+.possessed-pen-layout::before {
+	content: '';
+	position: fixed;
+	inset: 0;
+	pointer-events: none;
+	z-index: 2;
+	opacity: 0.045;
+	mix-blend-mode: overlay;
+	background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+	background-size: 180px 180px;
+}
+
+/* Vignette — warmer edge falloff for projector legibility */
 .possessed-pen-layout::after {
 	content: '';
 	position: fixed;
 	inset: 0;
 	pointer-events: none;
-	z-index: 1;
-	background: radial-gradient(ellipse 90% 80% at 50% 45%, transparent 55%, oklch(0 0 0 / 0.25) 100%);
+	z-index: 3;
+	background: radial-gradient(
+		ellipse 92% 82% at 50% 44%,
+		transparent 48%,
+		oklch(0.08 0.01 260 / 0.55) 100%
+	);
+	transition: background 600ms ease;
+}
+
+/* Empty canvas — faint grid + accent bloom toward Call dock */
+.possessed-pen-layout--empty::before {
+	opacity: 0.07;
+	background-image:
+		url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
+		linear-gradient(var(--pp-canvas-grid) 1px, transparent 1px),
+		linear-gradient(90deg, var(--pp-canvas-grid) 1px, transparent 1px);
+	background-size:
+		180px 180px,
+		48px 48px,
+		48px 48px;
+}
+
+.possessed-pen-layout--empty::after {
+	background:
+		radial-gradient(
+			ellipse 38% 32% at 92% 90%,
+			color-mix(in oklch, var(--pp-accent) 14%, transparent),
+			transparent 68%
+		),
+		radial-gradient(
+			ellipse 92% 82% at 50% 44%,
+			transparent 46%,
+			oklch(0.08 0.01 260 / 0.58) 100%
+		);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.possessed-pen-layout::after {
+		transition: none;
+	}
 }

@@ -12,7 +12,7 @@ Front door for coding agents on **possessed-pen**. Human quick start: [`README.m
 | Install | `bun install` (lockfile: `bun.lock`) |
 | Run | `bun run dev` **or** Cursor/VS Code launch **Dev — install + start** |
 
-Demo works **without** Bedrock (hardcoded Mermaid seed). Generate/redo needs Bedrock credentials in `.dev.vars`.
+Demo works **without** Bedrock (hardcoded Mermaid seed). Voice generate/edit needs Bedrock + Transcribe credentials in `.dev.vars`.
 
 ## Verify
 
@@ -25,8 +25,8 @@ bun run dev        # Vite + Cloudflare worker on :5173
 ## Architecture
 
 ```
-CommandBar / Demo → /api/generate-mermaid (Bedrock) → Mermaid string
-                 → createMermaidDiagram → tldraw shapes (meta.layerId)
+Call / Demo → Transcribe (optional) → /api/generate-mermaid (Bedrock) → Mermaid
+            → createMermaidDiagram → tldraw shapes (meta.layerId)
 LayerTimeline ← LayerStore
 ```
 

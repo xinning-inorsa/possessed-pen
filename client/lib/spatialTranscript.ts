@@ -48,6 +48,12 @@ export type SessionUtterance = {
 	llmPayload?: UtteranceLlmPayload
 }
 
+/** Mic RMS (0–1, same scale as useAudioLevel) at session time tMs. */
+export type AudioEnvelopeSample = {
+	tMs: number
+	rms: number
+}
+
 export type SpatialTranscriptSession = {
 	id: string
 	startedAt: number
@@ -56,6 +62,7 @@ export type SpatialTranscriptSession = {
 	dwellRegions: DwellRegion[]
 	circledRegions: CircledRegion[]
 	utterances: SessionUtterance[]
+	audioEnvelope: AudioEnvelopeSample[]
 }
 
 let activeSession: SpatialTranscriptSession | null = null
@@ -142,6 +149,7 @@ export function beginSpatialTranscriptSession(): SpatialTranscriptSession {
 		dwellRegions: [],
 		circledRegions: [],
 		utterances: [],
+		audioEnvelope: [],
 	}
 	lastPointerNotifyMs = 0
 	resetLiveCallState()
@@ -180,12 +188,33 @@ export function appendCircledRegion(region: CircledRegion): void {
 	notifyListeners()
 }
 
+function targetSession(): SpatialTranscriptSession | null {
+	return activeSession ?? lastSession
+}
+
+/** Store analyser RMS while a call is active (VAD already computes this). */
+export function appendAudioEnvelopeSample(rms: number): void {
+	if (!activeSession) return
+	if (!activeSession.audioEnvelope) activeSession.audioEnvelope = []
+	const tMs = Math.max(0, performance.now() - activeSession.startedAt)
+	const level = Math.min(1, rms * 10)
+	const samples = activeSession.audioEnvelope
+	const last = samples[samples.length - 1]
+	if (last && tMs - last.tMs < 40) {
+		last.rms = Math.max(last.rms, level)
+		last.tMs = tMs
+		return
+	}
+	samples.push({ tMs, rms: level })
+}
+
 export function appendUtterance(
 	utterance: Omit<SessionUtterance, 'id'>
 ): SessionUtterance | null {
-	if (!activeSession) return null
+	const session = targetSession()
+	if (!session) return null
 	const entry: SessionUtterance = { ...utterance, id: crypto.randomUUID() }
-	activeSession.utterances.push(entry)
+	session.utterances.push(entry)
 	notifyListeners()
 	return entry
 }
@@ -225,6 +254,9 @@ export function getSessionDurationMs(session: SpatialTranscriptSession): number 
 	}
 	for (const utterance of session.utterances) {
 		maxMs = Math.max(maxMs, utterance.tMsEnd)
+	}
+	for (const sample of session.audioEnvelope ?? []) {
+		maxMs = Math.max(maxMs, sample.tMs)
 	}
 	if (liveCallState.pendingUtteranceStartMs != null) {
 		maxMs = Math.max(maxMs, liveCallState.pendingUtteranceStartMs, getSessionElapsedMs(session))

@@ -3,11 +3,11 @@ import { Editor } from 'tldraw'
 import { useAgent } from '../agent/TldrawAgentAppProvider'
 import type { CommandStatus } from '../hooks/usePenCommand'
 import { useEmptyCanvas } from '../hooks/useEmptyCanvas'
-import { LayerDimmingEffect } from '../layers/LayerContext'
 import { CallButton } from './CallButton'
 import { DemoButton } from './DemoButton'
 import { InkingStatus } from './InkingStatus'
 import { InspectTimeline } from './InspectTimeline'
+import { ThinkingPanel } from './ThinkingPanel'
 import { LayerTimeline } from './LayerTimeline'
 
 export function PossessedPenChrome({ editor }: { editor: Editor }) {
@@ -35,6 +35,27 @@ export function PossessedPenChrome({ editor }: { editor: Editor }) {
 	}, [])
 
 	useEffect(() => {
+		const layout = document.querySelector('.possessed-pen-layout')
+		if (!layout) return
+		layout.classList.toggle('possessed-pen-layout--empty', isEmptyCanvas)
+		return () => layout.classList.remove('possessed-pen-layout--empty')
+	}, [isEmptyCanvas])
+
+	// One-shot: undo persisted 25% fade from the old inactive-layer dimming effect.
+	useEffect(() => {
+		const restoreDimmedShapes = () => {
+			for (const shape of editor.getCurrentPageShapes()) {
+				if (shape.opacity === 0.25) {
+					editor.updateShape({ id: shape.id, type: shape.type, opacity: 1 })
+				}
+			}
+		}
+		restoreDimmedShapes()
+		const retry = window.setTimeout(restoreDimmedShapes, 400)
+		return () => window.clearTimeout(retry)
+	}, [editor])
+
+	useEffect(() => {
 		const onKeyDown = (e: KeyboardEvent) => {
 			const target = e.target as HTMLElement | null
 			if (
@@ -53,16 +74,28 @@ export function PossessedPenChrome({ editor }: { editor: Editor }) {
 		return () => window.removeEventListener('keydown', onKeyDown)
 	}, [])
 
+	const showStageWordmark = isEmptyCanvas && status.variant !== 'inking'
+
 	return (
 		<div className="pp-overlay">
-			<LayerDimmingEffect editor={editor} />
+			{showStageWordmark && (
+				<div className="pp-stage-wordmark" aria-hidden>
+					<p className="pp-stage-wordmark__title">Possessed Pen</p>
+					<p className="pp-stage-wordmark__hint">
+						Start a call to draw · or press <kbd className="pp-kbd">D</kbd> for demo
+					</p>
+				</div>
+			)}
 			<DemoButton
 				onStatus={handleDemoStatus}
 				disabled={status.variant === 'inking'}
 				isEmptyCanvas={isEmptyCanvas}
 			/>
-			<LayerTimeline isEmptyCanvas={isEmptyCanvas} />
-			<InspectTimeline editor={editor} />
+			<div className="pp-bl-dock">
+				<ThinkingPanel />
+				<InspectTimeline editor={editor} />
+				<LayerTimeline isEmptyCanvas={isEmptyCanvas} />
+			</div>
 			<div className="pp-call-dock">
 				{isEmptyCanvas && status.variant !== 'inking' && (
 					<p className="pp-call-hint" aria-hidden>

@@ -56,11 +56,15 @@ Refer to the JSON schema for the full list of available events, their properties
 
 ## possessed-pen diagram rules
 
-- Prefer \`apply_mermaid\` with a valid Mermaid \`flowchart\` (LR or TB).
-- At most ~12 nodes; geo shapes only (rectangle, ellipse, diamond, triangle via Mermaid syntax).
-- Use labeled arrows; four colors max if using classDef.
-- Never emit pen/freehand actions or raw shape coordinates for whole diagrams.
-- When replacing a selection, emit a fresh flowchart that fits the user's new intent.
+### New diagrams (empty canvas / generate)
+- Use \`apply_mermaid\` with a valid Mermaid \`flowchart\` (TD or LR).
+- At most ~12 nodes; geo shapes only; labeled edges; no absolute x,y layout.
+
+### Edits (selection, voice refs, pointed-at shapes)
+- **Default:** patch existing shapes — \`label\`, \`update\`, \`delete\`, \`create\` + \`place\` (relative to \`referenceShapeId\`), arrows with \`fromId\`/\`toId\`.
+- Change text in place; add a node beside a reference; remove one box — do not delete and redraw the cluster for small tweaks.
+- **Only when the user asked to replace or restructure a cluster:** \`apply_mermaid\` for that region (same bounds as the selection).
+- Never use \`pen\`. Never emit a full diagram as many \`create\` actions with absolute coordinates.
 
 ## Rules
 

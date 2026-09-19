@@ -1,6 +1,6 @@
 # Cursor configuration — possessed-pen
 
-Hackathon project: canvas-first agent that only draws (no chat UI).
+Hackathon project: voice-first canvas agent that only draws (no chat UI).
 
 ## Rules (`.cursor/rules/`)
 

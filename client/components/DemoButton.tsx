@@ -41,7 +41,7 @@ export function DemoButton({ disabled, onStatus, isEmptyCanvas }: DemoButtonProp
 	return (
 		<button
 			type="button"
-			className={`pp-demo-button${isEmptyCanvas && !loading ? ' pp-demo-button--idle-empty' : ''}`}
+			className={`pp-demo-button pp-glass${isEmptyCanvas && !loading ? ' pp-demo-button--idle-empty' : ''}`}
 			onClick={() => void runDemo()}
 			disabled={disabled || loading}
 			title="Load auth-flow diagram (offline)"

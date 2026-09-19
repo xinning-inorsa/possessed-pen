@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { popupClassName, usePopupPresence } from '../hooks/usePopupPresence'
 import { useLayers } from '../layers/LayerContext'
 
 function formatTime(ts: number) {
@@ -19,6 +20,7 @@ export function LayerTimeline({ isEmptyCanvas = false }: LayerTimelineProps = {}
 
 	const collapse = useCallback(() => setExpanded(false), [])
 	const expand = useCallback(() => setExpanded(true), [])
+	const panel = usePopupPresence(expanded)
 
 	useEffect(() => {
 		if (!expanded) return
@@ -44,35 +46,45 @@ export function LayerTimeline({ isEmptyCanvas = false }: LayerTimelineProps = {}
 		}
 	}, [expanded, collapse])
 
-	if (!expanded) {
-		return (
-			<button
-				type="button"
-				className={`pp-layer-timeline__chip${isEmptyCanvas ? ' pp-layer-timeline__chip--empty' : ''}`}
-				onClick={expand}
-				aria-expanded={false}
-				aria-controls="pp-layer-timeline-panel"
-				aria-label={`Timeline, ${count} layer${count === 1 ? '' : 's'}. Expand.`}
-			>
-				<span className="pp-layer-timeline__chip-icon" aria-hidden>
-					<svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-						<rect x="1" y="4" width="10" height="2" rx="0.5" fill="currentColor" />
-						<rect x="2" y="7" width="8" height="2" rx="0.5" fill="currentColor" opacity="0.7" />
-						<rect x="3" y="1" width="6" height="2" rx="0.5" fill="currentColor" opacity="0.5" />
-					</svg>
-				</span>
-				<span className="pp-layer-timeline__chip-label">Timeline</span>
-				<span className="pp-layer-timeline__chip-count">{count}</span>
-			</button>
-		)
+	const chip = (
+		<button
+			type="button"
+			className={`pp-layer-timeline__chip pp-glass${isEmptyCanvas ? ' pp-layer-timeline__chip--empty' : ''}`}
+			onClick={expand}
+			aria-expanded={false}
+			aria-controls="pp-layer-timeline-panel"
+			aria-label={`Timeline, ${count} layer${count === 1 ? '' : 's'}. Expand.`}
+		>
+			<span className="pp-layer-timeline__chip-icon" aria-hidden>
+				<svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+					<rect x="1" y="4" width="10" height="2" rx="0.5" fill="currentColor" />
+					<rect x="2" y="7" width="8" height="2" rx="0.5" fill="currentColor" opacity="0.7" />
+					<rect x="3" y="1" width="6" height="2" rx="0.5" fill="currentColor" opacity="0.5" />
+				</svg>
+			</span>
+			<span className="pp-layer-timeline__chip-label">Timeline</span>
+			<span className="pp-layer-timeline__chip-count">{count}</span>
+		</button>
+	)
+
+	if (!expanded && !panel.mounted) {
+		return chip
 	}
 
 	return (
 		<aside
 			ref={panelRef}
 			id="pp-layer-timeline-panel"
-			className="pp-layer-timeline pp-layer-timeline--expanded"
+			className={popupClassName(
+				panel.open,
+				'pp-layer-timeline',
+				'pp-layer-timeline--expanded',
+				'pp-glass',
+				'pp-glass--panel'
+			)}
 			aria-label="Generation timeline"
+			aria-hidden={!panel.open}
+			onTransitionEnd={panel.onTransitionEnd}
 		>
 			<div className="pp-layer-timeline__header">
 				<span className="pp-layer-timeline__title">Timeline</span>

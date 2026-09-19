@@ -4,8 +4,8 @@ AWS_REGION=us-east-1
 # Claude Sonnet 4.5 (native Anthropic API on Bedrock). Fallback: us.anthropic.claude-3-5-sonnet-20241022-v2:0
 BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-5-20250929-v1:0
 
-# IAM — required for voice call STT (/api/transcribe, Amazon Transcribe streaming)
-# Bedrock bearer token above does NOT work for Transcribe; use IAM keys with transcribe:StartStreamTranscription
+# IAM — required for voice call STT (Worker presigns Transcribe WebSocket; browser streams PCM)
+# Bedrock bearer token above does NOT work for Transcribe; use IAM keys with transcribe:StartStreamTranscriptionWebSocket
 AWS_ACCESS_KEY_ID=
 AWS_SECRET_ACCESS_KEY=
 AWS_SESSION_TOKEN=

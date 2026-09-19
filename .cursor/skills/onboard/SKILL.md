@@ -34,6 +34,6 @@ Press **D** or click **Demo** — hardcoded auth-flow Mermaid. No API keys neede
 
 ## Bedrock generation
 
-Command bar (⌘K) calls `/api/generate-mermaid`. Requires `.dev.vars` with Bedrock credentials.
+The call button transcribes speech, then `/api/generate-mermaid` asks Bedrock for Mermaid. Requires `.dev.vars` (Bedrock bearer token; IAM keys for Transcribe).
 
-See [SETUP.md](./SETUP.md) for troubleshooting.
+See [SETUP.md](../../../SETUP.md) for troubleshooting.

@@ -1,4 +1,5 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
+import { popupClassName, usePopupPresence } from '../hooks/usePopupPresence'
 
 export type InkingStatusProps = {
 	message: string | null
@@ -17,29 +18,46 @@ export function InkingStatus({
 	onDismiss,
 	autoDismissMs = 2800,
 }: InkingStatusProps) {
+	const toast = usePopupPresence(Boolean(message))
+	const shownRef = useRef({ message, variant, onCancel, onEndCall })
+	if (message) {
+		shownRef.current = { message, variant, onCancel, onEndCall }
+	}
+
 	useEffect(() => {
 		if (!message || variant === 'inking' || onEndCall || !onDismiss) return
 		const timer = window.setTimeout(onDismiss, autoDismissMs)
 		return () => window.clearTimeout(timer)
 	}, [message, variant, onDismiss, onEndCall, autoDismissMs])
 
-	if (!message) return null
+	if (!toast.mounted) return null
+
+	const shown = message
+		? { message, variant, onCancel, onEndCall }
+		: shownRef.current
 
 	return (
 		<div
-			className={`pp-inking-status pp-inking-status--${variant}`}
+			className={popupClassName(
+				toast.open,
+				'pp-inking-status',
+				'pp-glass',
+				`pp-inking-status--${shown.variant}`
+			)}
 			role="status"
 			aria-live="polite"
+			aria-hidden={!toast.open}
+			onTransitionEnd={toast.onTransitionEnd}
 		>
-			{variant === 'inking' && <span className="pp-inking-status__pulse" aria-hidden />}
-			<span className="pp-inking-status__text">{message}</span>
-			{variant === 'inking' && onEndCall && (
-				<button type="button" className="pp-inking-status__end-call" onClick={onEndCall}>
+			{shown.variant === 'inking' && <span className="pp-inking-status__pulse" aria-hidden />}
+			<span className="pp-inking-status__text">{shown.message}</span>
+			{shown.variant === 'inking' && shown.onEndCall && (
+				<button type="button" className="pp-inking-status__end-call" onClick={shown.onEndCall}>
 					End call
 				</button>
 			)}
-			{variant === 'inking' && onCancel && !onEndCall && (
-				<button type="button" className="pp-inking-status__cancel" onClick={onCancel}>
+			{shown.variant === 'inking' && shown.onCancel && !shown.onEndCall && (
+				<button type="button" className="pp-inking-status__cancel" onClick={shown.onCancel}>
 					Cancel
 					<kbd className="pp-kbd">Esc</kbd>
 				</button>

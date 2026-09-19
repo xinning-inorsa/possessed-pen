@@ -13,14 +13,16 @@ An agent that only draws — steer with lasso and a command bar, not chat.
 - **Node:** ≥ 22 (see `.nvmrc`). Vite 8 + Rolldown require Node 22+.
 - **Canvas:** tldraw agent kit, full-screen infinite canvas.
 - **LLM:** Amazon Bedrock (Claude) via `@ai-sdk/amazon-bedrock`. Credentials in `.dev.vars` (never commit).
-- **Layout:** Mermaid only — `@tldraw/mermaid` `createMermaidDiagram`. LLM emits topology; layout is deterministic. Never ask the model for raw (x,y) coordinates.
+- **Layout (new diagrams):** Mermaid — `@tldraw/mermaid` `createMermaidDiagram`. LLM emits topology; layout is deterministic. Never ask the model for raw (x,y) coordinates for full diagrams.
+- **Edits (FigJam hybrid):** Stream native actions (`label`, `delete`, `create`, `place`, `update`) to patch existing shapes. Mermaid replace (`replace_in_bounds`) only when the user asks to restructure a cluster.
 
 ## Product (do not regress)
 
 - No chat transcript UI. Command bar + Demo + layer timeline only.
 - Demo button uses **hardcoded Mermaid** — works offline, zero typing for judges.
-- Selection → redo: client-owned `replace_in_bounds` — delete only selected `shapeIds`, regenerate inside same AABB.
-- Agent working mode: **Pen and screenshot disabled**. `apply_mermaid` or `/api/generate-mermaid` for ink.
+- Empty canvas / generate: `/api/generate-mermaid` → `createMermaidDiagram`.
+- Edit calls: agent streams surgical actions by default; `replace_in_bounds` only for explicit cluster restructure (or agent `apply_mermaid` fallback).
+- Agent working mode: **Pen and screenshot disabled**. No whole-diagram coordinate layout.
 
 ## Do NOT build
 

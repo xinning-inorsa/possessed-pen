@@ -2,12 +2,10 @@ import {
 	createContext,
 	useCallback,
 	useContext,
-	useEffect,
 	useMemo,
 	useState,
 	type ReactNode,
 } from 'react'
-import { Editor } from 'tldraw'
 
 export type Layer = {
 	id: string
@@ -65,22 +63,4 @@ export function useLayers() {
 	const ctx = useContext(LayerContext)
 	if (!ctx) throw new Error('useLayers requires LayerProvider')
 	return ctx
-}
-
-export function LayerDimmingEffect({ editor }: { editor: Editor }) {
-	const { activeLayerId } = useLayers()
-
-	useEffect(() => {
-		if (!activeLayerId) return
-		for (const shape of editor.getCurrentPageShapes()) {
-			const layerId = shape.meta?.layerId as string | undefined
-			if (!layerId) continue
-			const opacity = layerId === activeLayerId ? 1 : 0.25
-			if (shape.opacity !== opacity) {
-				editor.updateShape({ id: shape.id, type: shape.type, opacity })
-			}
-		}
-	}, [editor, activeLayerId])
-
-	return null
 }

@@ -51,16 +51,6 @@ export function getSelectionBounds(editor: Editor, shapeIds: TLShapeId[]): Box |
 	return Box.Common(shapes.map((shape) => editor.getShapePageBounds(shape)!))
 }
 
-export function stampLayerOpacity(editor: Editor, activeLayerId: string | null) {
-	for (const shape of editor.getCurrentPageShapes()) {
-		const layerId = shape.meta?.[LAYER_META_KEY] as string | undefined
-		const opacity = !activeLayerId || !layerId || layerId === activeLayerId ? 1 : 0.25
-		if (shape.opacity !== opacity) {
-			editor.updateShape({ id: shape.id, type: shape.type, opacity })
-		}
-	}
-}
-
 export function snapshotShapes(editor: Editor, shapeIds: TLShapeId[]): TLShape[] {
 	return shapeIds
 		.map((id) => editor.getShape(id))
